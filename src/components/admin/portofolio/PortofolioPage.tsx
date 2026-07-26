@@ -164,23 +164,20 @@ export function PortofolioPage() {
       });
 
       // 1. Save hero and categories to cms_pages
-      const { data: existingPage } = await supabase
-        .from("cms_pages")
-        .select("id")
-        .eq("slug", "portofolio")
-        .maybeSingle();
-
       const pageContent = { hero, kategori: kategoriPayload };
-      if (existingPage) {
-        await supabase
-          .from("cms_pages")
-          .update({ content: pageContent, updated_at: new Date().toISOString() })
-          .eq("id", existingPage.id);
-      } else {
-        await supabase
-          .from("cms_pages")
-          .insert([{ slug: "portofolio", content: pageContent }]);
-      }
+      const { data: userData } = await supabase.auth.getUser();
+      const updatedBy = userData?.user?.id || null;
+
+      const { error: pageErr } = await supabase
+        .from("cms_pages")
+        .upsert({
+          slug: "portofolio",
+          content: pageContent,
+          updated_at: new Date().toISOString(),
+          updated_by: updatedBy
+        }, { onConflict: "slug" });
+
+      if (pageErr) throw pageErr;
 
       // 2. Sync portofolio table
       const { data: existingProj } = await supabase.from("portofolio").select("id");
@@ -189,7 +186,8 @@ export function PortofolioPage() {
 
       const toDelete = (existingProj ?? []).map((e) => e.id).filter((id) => !currentProjIds.includes(id));
       if (toDelete.length > 0) {
-        await supabase.from("portofolio").delete().in("id", toDelete);
+        const { error: delErr } = await supabase.from("portofolio").delete().in("id", toDelete);
+        if (delErr) throw delErr;
       }
 
       let orderIdx = 0;
@@ -215,7 +213,8 @@ export function PortofolioPage() {
             is_published: true,
           };
 
-          await supabase.from("portofolio").upsert(projPayload);
+          const { error: upsertErr } = await supabase.from("portofolio").upsert(projPayload);
+          if (upsertErr) throw upsertErr;
         }
       }
 

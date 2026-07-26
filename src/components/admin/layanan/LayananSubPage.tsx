@@ -300,7 +300,8 @@ export function LayananSubPage({ meta }: { meta: SubMeta }) {
 
       if (toDeleteScopes.length > 0) {
         // Delete child scope items first to prevent foreign key violations or orphan data
-        await supabase.from("service_scope_items").delete().in("scope_id", toDeleteScopes);
+        const { error: delItemsErr } = await supabase.from("service_scope_items").delete().in("scope_id", toDeleteScopes);
+        if (delItemsErr) throw delItemsErr;
 
         const { data: delRes, error: delErr } = await supabase
           .from("service_scopes")
@@ -355,7 +356,8 @@ export function LayananSubPage({ meta }: { meta: SubMeta }) {
         const toDeleteItems = (existingItems ?? []).map((item) => item.id).filter((id) => !currentItemIds.includes(id));
 
         if (toDeleteItems.length > 0) {
-          await supabase.from("service_scope_items").delete().in("id", toDeleteItems);
+          const { error: delItemErr } = await supabase.from("service_scope_items").delete().in("id", toDeleteItems);
+          if (delItemErr) throw delItemErr;
         }
 
         const upsertItemsData = l.form.services.map((item, idx) => {
@@ -373,7 +375,8 @@ export function LayananSubPage({ meta }: { meta: SubMeta }) {
         });
 
         if (upsertItemsData.length > 0) {
-          await supabase.from("service_scope_items").upsert(upsertItemsData);
+          const { error: upsertItemsErr } = await supabase.from("service_scope_items").upsert(upsertItemsData);
+          if (upsertItemsErr) throw upsertItemsErr;
         }
 
         updatedLingkup.push({
@@ -412,10 +415,11 @@ export function LayananSubPage({ meta }: { meta: SubMeta }) {
             return c;
           });
 
-          await supabase
+          const { error: overviewErr } = await supabase
             .from("cms_pages")
             .update({ content: { ...overviewContent, cards: updatedCards } })
             .eq("slug", "layanan");
+          if (overviewErr) throw overviewErr;
         }
       }
 

@@ -83,10 +83,11 @@ export function BeritaPage() {
     setSaving(true);
     try {
       // 1. Save Hero to cms_pages
-      await supabase.from("cms_pages").upsert({
+      const { error: heroErr } = await supabase.from("cms_pages").upsert({
         slug: "berita",
         content: { hero } as any,
       }, { onConflict: "slug" });
+      if (heroErr) throw heroErr;
 
       // 2. Sync Articles table
       const { data: existing } = await supabase.from("articles").select("id");
@@ -94,7 +95,8 @@ export function BeritaPage() {
       const toDelete = (existing ?? []).map((e) => e.id).filter((id) => !currentIds.includes(id));
 
       if (toDelete.length > 0) {
-        await supabase.from("articles").delete().in("id", toDelete);
+        const { error: delErr } = await supabase.from("articles").delete().in("id", toDelete);
+        if (delErr) throw delErr;
       }
 
       // Upsert current articles

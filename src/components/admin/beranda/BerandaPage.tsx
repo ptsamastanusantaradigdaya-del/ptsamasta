@@ -281,14 +281,16 @@ export function BerandaPage() {
         };
 
         if (heroId) {
-          await supabase.from("home_hero").update(heroPayload).eq("id", heroId);
+          const { error } = await supabase.from("home_hero").update(heroPayload).eq("id", heroId);
+          if (error) throw error;
         } else {
           const { data, error } = await supabase
             .from("home_hero")
             .insert([heroPayload])
             .select("id")
             .single();
-          if (!error && data) setHeroId(data.id);
+          if (error) throw error;
+          if (data) setHeroId(data.id);
         }
 
         // 3. Sync why_choose_us table
@@ -297,7 +299,8 @@ export function BerandaPage() {
         const toDeleteWhy = (existingWhy ?? []).map((w) => w.id).filter((id) => !currentWhyIds.includes(id));
 
         if (toDeleteWhy.length > 0) {
-          await supabase.from("why_choose_us").delete().in("id", toDeleteWhy);
+          const { error: delWhyErr } = await supabase.from("why_choose_us").delete().in("id", toDeleteWhy);
+          if (delWhyErr) throw delWhyErr;
         }
 
         const upsertWhyData = c.mengapa.features.map((f, idx) => {
@@ -328,7 +331,8 @@ export function BerandaPage() {
         const toDeletePartners = (existingPartners ?? []).map((p) => p.id).filter((id) => !currentPartnerIds.includes(id));
 
         if (toDeletePartners.length > 0) {
-          await supabase.from("partners").delete().in("id", toDeletePartners);
+          const { error: delPartErr } = await supabase.from("partners").delete().in("id", toDeletePartners);
+          if (delPartErr) throw delPartErr;
         }
 
         const upsertPartnersData = c.mitra.partners.map((p, idx) => {

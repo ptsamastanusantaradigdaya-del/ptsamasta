@@ -231,9 +231,11 @@ export function TentangKamiPage() {
             sort_order: update.order,
           };
           if (existingRow) {
-            await supabase.from("about_us").update(rowPayload).eq("id", existingRow.id);
+            const { error: updErr } = await supabase.from("about_us").update(rowPayload).eq("id", existingRow.id);
+            if (updErr) throw updErr;
           } else {
-            await supabase.from("about_us").insert([rowPayload]);
+            const { error: insErr } = await supabase.from("about_us").insert([rowPayload]);
+            if (insErr) throw insErr;
           }
         }
 

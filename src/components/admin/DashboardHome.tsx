@@ -105,11 +105,15 @@ export function DashboardHome() {
             });
 
             if (modified) {
-              await supabase
+              const { error: updErr } = await supabase
                 .from("cms_pages")
                 .update({ content: { ...content, lingkup: updatedLingkup } })
                 .eq("slug", slug);
-              console.log(`[Migration] Updated slug '${slug}' content with database UUIDs.`);
+              if (updErr) {
+                console.error(`[Migration] Failed to update slug '${slug}':`, updErr);
+              } else {
+                console.log(`[Migration] Updated slug '${slug}' content with database UUIDs.`);
+              }
             }
           }
         } catch (migErr) {

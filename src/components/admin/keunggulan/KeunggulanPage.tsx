@@ -165,7 +165,8 @@ export function KeunggulanPage() {
       const toDelete = (existing ?? []).map((e) => e.id).filter((id) => !currentIds.includes(id));
 
       if (toDelete.length > 0) {
-        await supabase.from("keunggulan").delete().in("id", toDelete);
+        const { error: delErr } = await supabase.from("keunggulan").delete().in("id", toDelete);
+        if (delErr) throw delErr;
       }
 
       const upsertData = keunggulanList.map((k, index) => ({

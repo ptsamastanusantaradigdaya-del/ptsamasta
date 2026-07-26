@@ -110,7 +110,8 @@ export function SejarahPage() {
       const toDelete = (existing ?? []).map((e) => e.id).filter((id) => !currentIds.includes(id));
 
       if (toDelete.length > 0) {
-        await supabase.from("sejarah").delete().in("id", toDelete);
+        const { error: delErr } = await supabase.from("sejarah").delete().in("id", toDelete);
+        if (delErr) throw delErr;
       }
 
       const upsertData = timeline.map((t, index) => ({
