@@ -4,8 +4,18 @@ import { supabase } from "@/integrations/supabase/client";
 
 type Item = { id: string; year: string; title: string; description: string | null };
 
+const renderMarkdown = (text: string) =>
+  text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
+    part.startsWith("**") && part.endsWith("**") ? (
+      <strong key={i} className="text-white font-bold">{part.slice(2, -2)}</strong>
+    ) : (
+      <span key={i}>{part}</span>
+    )
+  );
+
 const SejarahPage = () => {
   const [items, setItems] = useState<Item[]>([]);
+  const [cmsContent, setCmsContent] = useState<any>(null);
 
   useEffect(() => {
     supabase
@@ -13,7 +23,21 @@ const SejarahPage = () => {
       .select("id,year,title,description,sort_order")
       .order("sort_order")
       .then(({ data }) => setItems(data ?? []));
+
+    supabase
+      .from("cms_pages")
+      .select("content")
+      .eq("slug", "sejarah")
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data && data.content) {
+          setCmsContent(data.content);
+        }
+      });
   }, []);
+
+  const filosofiTitle = cmsContent?.filosofi?.title || "Filosofi Perusahaan";
+  const filosofiBody = cmsContent?.filosofi?.body || "";
 
   return (
     <div>
@@ -54,10 +78,16 @@ const SejarahPage = () => {
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-white/10 mb-4">
             <Shield className="w-6 h-6 text-white" />
           </div>
-          <h2 className="text-2xl md:text-3xl font-bold text-white mb-6">Filosofi Perusahaan</h2>
+          <h2 className="text-2xl md:text-3xl font-bold text-white mb-6">
+            {filosofiTitle}
+          </h2>
           <div className="bg-white/10 rounded-xl p-8 backdrop-blur-sm">
             <p className="text-white/90 text-sm leading-relaxed">
-              Filosofi <strong className="text-white">PT Samasta Nusantara Digdaya</strong> menegaskan tekad Perseroan untuk menjadi perusahaan nasional yang memiliki kapasitas menyeluruh, berdaya saing tinggi, dan berlandaskan integritas, guna menghadirkan nilai tambah dan dampak positif yang berkelanjutan bagi seluruh pemangku kepentingan.
+              {filosofiBody ? renderMarkdown(filosofiBody) : (
+                <>
+                  Filosofi <strong className="text-white font-bold">PT Samasta Nusantara Digdaya</strong> menegaskan tekad Perseroan untuk menjadi perusahaan nasional yang memiliki kapasitas menyeluruh, berdaya saing tinggi, dan berlandaskan integritas, guna menghadirkan nilai tambah dan dampak positif yang berkelanjutan bagi seluruh pemangku kepentingan.
+                </>
+              )}
             </p>
           </div>
         </div>

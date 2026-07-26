@@ -42,7 +42,7 @@ const profileSubmenu = [
 const layananSubmenu = [
   { label: "Halaman Layanan", to: "/admin/dashboard/layanan" },
   { label: "Pemeliharaan & Lingkungan", to: "/admin/dashboard/layanan/pemeliharaan" },
-  { label: "Jasa Profesional & SDM", to: "/admin/dashboard/layanan/jasa-sdm" },
+  { label: "Jasa Profesional & SDM", to: "/admin/dashboard/layanan/jasa-profesional" },
   { label: "Pengolahan & Perdagangan", to: "/admin/dashboard/layanan/perdagangan" },
   { label: "Event Organizer & Media", to: "/admin/dashboard/layanan/event-organizer" },
 ];

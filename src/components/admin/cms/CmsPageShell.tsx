@@ -133,7 +133,10 @@ export function CmsPageShell<T>({
             Batalkan
           </Button>
           <Button
-            onClick={() => void save()}
+            onClick={() => {
+              console.log("[CmsPageShell] Clicked Simpan Perubahan button");
+              void save();
+            }}
             disabled={saving}
             className="bg-blue-600 hover:bg-blue-700 gap-2"
           >

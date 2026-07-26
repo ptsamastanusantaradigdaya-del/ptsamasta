@@ -19,6 +19,14 @@ import {
   Network,
   HeartHandshake,
   Sparkles,
+  Search,
+  Eye,
+  X,
+  ArrowUp,
+  ArrowDown,
+  Mail,
+  Linkedin,
+  Phone,
 } from "lucide-react";
 import { SectionCard, Field } from "@/components/admin/tentang-kami/SectionCard";
 import { UploadBox } from "@/components/admin/tentang-kami/UploadBox";
@@ -30,7 +38,7 @@ import { CmsPageShell } from "@/components/admin/cms/CmsPageShell";
 import { useCmsPage } from "@/hooks/useCmsPage";
 import { registerDefaults } from "@/lib/cms/defaults";
 
-const SLUG = "struktur";
+const SLUG = "struktur-manajemen";
 
 type Pimpinan = {
   id: string;
@@ -48,9 +56,18 @@ type Pimpinan = {
   latarPendidikan: string;
   organisasi: string;
   kontribusi: string;
-  highlights: { id: number; label: string; isi: string; icon: string }[];
+  highlights: { id: number | string; label: string; isi: string; icon: string }[];
   expanded: boolean;
   photo_url?: string;
+  // Direktur-only fields
+  visiKepemimpinan?: string;
+  strategiBisnis?: string;
+  fokusPengembangan?: string;
+  targetPerusahaan?: string;
+  portofolio?: string;
+  sertifikasi?: string;
+  pengalaman?: string;
+  pendidikan?: string;
 };
 
 const ICON_OPTIONS = [
@@ -146,12 +163,36 @@ export function StrukturPage() {
 
   const parseDetailContent = (detailContent: string | null) => {
     const res = {
+      badgeColor: "#1E3A8A",
+      heroBgColor: "#1E3A8A",
+      heroOverlay: "#1E3A8A",
+      heroDeskripsi: "",
       jabatanProfesional: "",
       latarPendidikan: "",
       organisasi: "",
       kontribusi: "",
+      highlights: [] as { id: string | number; label: string; isi: string; icon: string }[],
+      // Direktur additional fields
+      visiKepemimpinan: "",
+      strategiBisnis: "",
+      fokusPengembangan: "",
+      targetPerusahaan: "",
+      keahlian: [] as string[],
+      portofolio: "",
+      pengalaman: "",
+      pendidikan: "",
+      sertifikasi: "",
     };
     if (!detailContent) return res;
+    if (detailContent.trim().startsWith("{")) {
+      try {
+        const parsed = JSON.parse(detailContent);
+        return { ...res, ...parsed };
+      } catch (e) {
+        console.error("Gagal parse JSON detail_content:", e);
+      }
+    }
+    // Fallback parse markdown
     const rawSections = detailContent.split(/(?=^## )/m);
     rawSections.forEach((s) => {
       const trimmed = s.trim();
@@ -174,7 +215,26 @@ export function StrukturPage() {
   };
 
   const buildDetailContent = (p: Pimpinan) => {
-    return `## Jabatan & Pengalaman Profesional\n${p.jabatanProfesional || ""}\n\n## Latar Belakang Pendidikan\n${p.latarPendidikan || ""}\n\n## Organisasi & Kepemimpinan\n${p.organisasi || ""}\n\n## Kontribusi & Nilai yang Dibawa\n${p.kontribusi || ""}`;
+    const payload = {
+      badgeColor: p.badgeColor,
+      heroBgColor: p.heroBgColor,
+      heroDeskripsi: p.heroDeskripsi,
+      jabatanProfesional: p.jabatanProfesional,
+      latarPendidikan: p.latarPendidikan,
+      organisasi: p.organisasi,
+      kontribusi: p.kontribusi,
+      highlights: p.highlights,
+      visiKepemimpinan: p.visiKepemimpinan,
+      strategiBisnis: p.strategiBisnis,
+      fokusPengembangan: p.fokusPengembangan,
+      targetPerusahaan: p.targetPerusahaan,
+      keahlian: p.keahlian,
+      portofolio: p.portofolio,
+      pengalaman: p.pengalaman,
+      pendidikan: p.pendidikan,
+      sertifikasi: p.sertifikasi,
+    };
+    return JSON.stringify(payload, null, 2);
   };
 
   useEffect(() => {
@@ -213,7 +273,6 @@ export function StrukturPage() {
               expanded: false,
               photo_url: p.photo_url || "",
               ...parsed,
-              highlights: [],
             };
           })
         );
@@ -229,6 +288,8 @@ export function StrukturPage() {
 
   const handleSave = async () => {
     try {
+      console.log("[StrukturManajemen] Payload Save:", JSON.stringify({ hero, intro, sectionTitles, pencapaian, gcg, cta, pimpinan }, null, 2));
+
       // 1. Save CMS configs to cms_pages
       cms.setContent({ hero, intro, sectionTitles, pimpinan: [], pencapaian, gcg, cta });
       setTimeout(async () => {
@@ -260,13 +321,14 @@ export function StrukturPage() {
           bio: p.deskripsiSingkat,
           detail_content: buildDetailContent(p),
           sort_order: index,
-          is_active: true,
+          is_active: p.is_active !== false,
         };
       });
 
       if (upsertData.length > 0) {
-        const { error } = await supabase.from("struktur_manajemen").upsert(upsertData);
+        const { data: dbResult, error } = await supabase.from("struktur_manajemen").upsert(upsertData).select();
         if (error) throw error;
+        console.log("[StrukturManajemen] Database Result:", dbResult);
       }
 
       toast.success("Perubahan struktur manajemen berhasil disimpan");
@@ -281,6 +343,53 @@ export function StrukturPage() {
   const updatePimpinan = <K extends keyof Pimpinan>(id: string, key: K, value: Pimpinan[K]) =>
     setPimpinan((p) => p.map((x) => (x.id === id ? { ...x, [key]: value } : x)));
 
+  const [searchTerm, setSearchTerm] = useState("");
+  const [showPreview, setShowPreview] = useState(false);
+
+  const movePimpinan = (id: string, direction: "up" | "down") => {
+    setPimpinan((prev) => {
+      const idx = prev.findIndex((x) => x.id === id);
+      if (idx === -1) return prev;
+      const category = prev[idx].kategori;
+      const sameCategoryIndices = prev
+        .map((x, i) => (x.kategori === category ? i : -1))
+        .filter((i) => i !== -1);
+      const catIdx = sameCategoryIndices.indexOf(idx);
+      const targetCatIdx = direction === "up" ? catIdx - 1 : catIdx + 1;
+      if (targetCatIdx < 0 || targetCatIdx >= sameCategoryIndices.length) return prev;
+      const swapWithIdx = sameCategoryIndices[targetCatIdx];
+      const next = [...prev];
+      const temp = next[idx];
+      next[idx] = next[swapWithIdx];
+      next[swapWithIdx] = temp;
+      return next;
+    });
+  };
+
+  const movePencapaian = (idx: number, direction: "up" | "down") => {
+    setPencapaian((prev) => {
+      const targetIdx = direction === "up" ? idx - 1 : idx + 1;
+      if (targetIdx < 0 || targetIdx >= prev.items.length) return prev;
+      const nextItems = [...prev.items];
+      const temp = nextItems[idx];
+      nextItems[idx] = nextItems[targetIdx];
+      nextItems[targetIdx] = temp;
+      return { ...prev, items: nextItems };
+    });
+  };
+
+  const moveGcg = (idx: number, direction: "up" | "down") => {
+    setGcg((prev) => {
+      const targetIdx = direction === "up" ? idx - 1 : idx + 1;
+      if (targetIdx < 0 || targetIdx >= prev.items.length) return prev;
+      const nextItems = [...prev.items];
+      const temp = nextItems[idx];
+      nextItems[idx] = nextItems[targetIdx];
+      nextItems[targetIdx] = temp;
+      return { ...prev, items: nextItems };
+    });
+  };
+
   const addPimpinan = (kategori: "komisaris" | "direksi") =>
     setPimpinan((p) => [
       ...p,
@@ -289,10 +398,10 @@ export function StrukturPage() {
         nama: "Nama Lengkap",
         jabatan: kategori === "komisaris" ? "Komisaris" : "Direktur",
         kategori,
-        badgeColor: "#1E3A8A",
+        badgeColor: kategori === "komisaris" ? "#1E3A8A" : "#2563EB",
         deskripsiSingkat: "",
         heroDeskripsi: "",
-        heroBgColor: "#1E3A8A",
+        heroBgColor: kategori === "komisaris" ? "#1E3A8A" : "#2563EB",
         keahlian: [],
         pendidikanSingkat: "",
         pengalamanTahun: "",
@@ -302,6 +411,18 @@ export function StrukturPage() {
         kontribusi: "",
         highlights: [],
         expanded: true,
+        visiKepemimpinan: "",
+        strategiBisnis: "",
+        fokusPengembangan: "",
+        targetPerusahaan: "",
+        portofolio: "",
+        sertifikasi: "",
+        pengalaman: "",
+        pendidikan: "",
+        email: "",
+        linkedin: "",
+        telepon: "",
+        is_active: true,
       },
     ]);
 
@@ -347,6 +468,26 @@ export function StrukturPage() {
       reload={cms.reload}
     >
       <div className="max-w-6xl mx-auto space-y-6">
+      {/* Search and Action Buttons */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+          <Input
+            placeholder="Cari pimpinan berdasarkan nama..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-9 bg-slate-50/50"
+          />
+        </div>
+        <Button
+          type="button"
+          onClick={() => setShowPreview(true)}
+          className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-lg cursor-pointer transition-colors"
+        >
+          <Eye className="h-4 w-4" /> Preview Halaman
+        </Button>
+      </div>
+
       {/* HERO */}
       <SectionCard
         title="Hero Section"
@@ -406,11 +547,15 @@ export function StrukturPage() {
         kategori="komisaris"
         icon={<Users className="h-5 w-5 text-blue-600" />}
         title="Dewan Komisaris"
-        pimpinan={pimpinan.filter((p) => p.kategori === "komisaris")}
+        pimpinan={pimpinan
+          .filter((p) => p.kategori === "komisaris")
+          .filter((p) => p.nama.toLowerCase().includes(searchTerm.toLowerCase()) || p.jabatan.toLowerCase().includes(searchTerm.toLowerCase()))
+        }
         onAdd={() => addPimpinan("komisaris")}
         onRemove={removePimpinan}
         onToggle={togglePimpinan}
         onUpdate={updatePimpinan}
+        onMove={movePimpinan}
         onAddHighlight={addHighlight}
         onUpdateHighlight={updateHighlight}
         onRemoveHighlight={removeHighlight}
@@ -425,11 +570,15 @@ export function StrukturPage() {
         kategori="direksi"
         icon={<UserCog className="h-5 w-5 text-blue-600" />}
         title="Dewan Direksi"
-        pimpinan={pimpinan.filter((p) => p.kategori === "direksi")}
+        pimpinan={pimpinan
+          .filter((p) => p.kategori === "direksi")
+          .filter((p) => p.nama.toLowerCase().includes(searchTerm.toLowerCase()) || p.jabatan.toLowerCase().includes(searchTerm.toLowerCase()))
+        }
         onAdd={() => addPimpinan("direksi")}
         onRemove={removePimpinan}
         onToggle={togglePimpinan}
         onUpdate={updatePimpinan}
+        onMove={movePimpinan}
         onAddHighlight={addHighlight}
         onUpdateHighlight={updateHighlight}
         onRemoveHighlight={removeHighlight}
@@ -619,6 +768,148 @@ export function StrukturPage() {
       </SectionCard>
 
       </div>
+
+      {/* PREVIEW MODAL */}
+      <AnimatePresence>
+        {showPreview && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-slate-50 w-full max-w-5xl h-[85vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-slate-200 shrink-0">
+                <div>
+                  <h3 className="font-bold text-slate-800 text-sm">Preview Halaman Publik</h3>
+                  <p className="text-xs text-slate-500">Tampilan sebelum disimpan ke database</p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowPreview(false)}
+                  className="rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                >
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
+
+              {/* Preview Body */}
+              <div className="flex-1 overflow-y-auto space-y-12 pb-16">
+                {/* Hero */}
+                <div
+                  style={{ backgroundColor: hero.overlayColor }}
+                  className="py-16 text-center text-white relative px-4"
+                >
+                  <span className="bg-white/10 border border-white/10 text-white text-[10px] font-semibold px-3 py-1 rounded-full uppercase tracking-wider">
+                    {hero.badge}
+                  </span>
+                  <h1 className="text-3xl font-extrabold mt-3">{hero.title}</h1>
+                  <p className="text-sm text-white/70 mt-2 max-w-xl mx-auto">{hero.subtitle}</p>
+                </div>
+
+                {/* Intro */}
+                <div className="text-center max-w-3xl mx-auto px-4 space-y-3">
+                  <h2 className="text-xl font-bold text-slate-800">{intro.title}</h2>
+                  <p className="text-xs text-slate-500 leading-relaxed">{intro.paragraf1}</p>
+                  {intro.paragraf2 && <p className="text-xs text-slate-500 leading-relaxed">{intro.paragraf2}</p>}
+                </div>
+
+                {/* Dewan Komisaris */}
+                <div className="max-w-4xl mx-auto px-4 text-center space-y-6">
+                  <h3 className="text-lg font-bold text-slate-800 border-b pb-2">{sectionTitles.komisarisTitle}</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 justify-center">
+                    {pimpinan.filter((p) => p.kategori === "komisaris" && p.is_active !== false).map((p) => (
+                      <div key={p.id} className="bg-white border rounded-xl p-4 text-center shadow-sm">
+                        <div className="w-20 h-20 rounded-full mx-auto mb-3 bg-slate-100 border overflow-hidden">
+                          {p.photo_url ? (
+                            <img src={p.photo_url} alt={p.nama} className="w-full h-full object-cover" />
+                          ) : (
+                            <Users className="h-8 w-8 text-slate-400 mx-auto mt-6" />
+                          )}
+                        </div>
+                        <h4 className="font-bold text-xs text-slate-800">{p.nama}</h4>
+                        <span
+                          style={{ backgroundColor: p.badgeColor }}
+                          className="inline-block mt-2 text-white text-[9px] font-semibold px-2 py-0.5 rounded-full"
+                        >
+                          {p.jabatan}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Dewan Direksi */}
+                <div className="max-w-4xl mx-auto px-4 text-center space-y-6">
+                  <h3 className="text-lg font-bold text-slate-800 border-b pb-2">{sectionTitles.direksiTitle}</h3>
+                  <div className="space-y-4 max-w-2xl mx-auto">
+                    {pimpinan.filter((p) => p.kategori === "direksi" && p.is_active !== false).map((p) => (
+                      <div key={p.id} className="bg-white border rounded-xl p-5 text-left shadow-sm flex gap-4">
+                        <div className="w-24 h-24 rounded-lg bg-slate-100 border overflow-hidden shrink-0">
+                          {p.photo_url ? (
+                            <img src={p.photo_url} alt={p.nama} className="w-full h-full object-cover" />
+                          ) : (
+                            <Users className="h-8 w-8 text-slate-400 mx-auto mt-8" />
+                          )}
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-sm text-slate-800">{p.nama}</h4>
+                          <span
+                            style={{ backgroundColor: p.badgeColor }}
+                            className="inline-block mt-1 text-white text-[9px] font-semibold px-2 py-0.5 rounded-full"
+                          >
+                            {p.jabatan}
+                          </span>
+                          <p className="text-[11px] text-slate-500 mt-2 leading-relaxed">{p.deskripsiSingkat}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Pencapaian */}
+                <div className="bg-[#1E3A8A] text-white py-12 px-4 text-center">
+                  <h3 className="font-bold text-lg mb-2">{pencapaian.title}</h3>
+                  <p className="text-xs text-white/70 mb-8">{pencapaian.subtitle}</p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
+                    {pencapaian.items.map((it: any) => (
+                      <div key={it.id} className="bg-white/10 rounded-xl p-4 text-left border border-white/10">
+                        <h4 className="font-bold text-xs">{it.title}</h4>
+                        <p className="text-[10px] text-white/80 mt-1">{it.desc}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* GCG */}
+                <div className="max-w-3xl mx-auto px-4 text-center space-y-6">
+                  <h3 className="text-lg font-bold text-slate-800">{gcg.title}</h3>
+                  <div className="space-y-3 max-w-xl mx-auto text-left">
+                    {gcg.items.map((it: any) => (
+                      <div key={it.id} className="bg-white border rounded-xl p-4 shadow-sm flex gap-3">
+                        <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                          <ShieldCheck size={16} />
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-xs text-slate-800">{it.title}</h4>
+                          <p className="text-[10px] text-slate-500 mt-1">{it.desc}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </CmsPageShell>
   );
 }
@@ -651,6 +942,7 @@ function PimpinanSection({
   onRemove,
   onToggle,
   onUpdate,
+  onMove,
   onAddHighlight,
   onUpdateHighlight,
   onRemoveHighlight,
@@ -667,6 +959,7 @@ function PimpinanSection({
   onRemove: (id: string) => void;
   onToggle: (id: string) => void;
   onUpdate: <K extends keyof Pimpinan>(id: string, key: K, value: Pimpinan[K]) => void;
+  onMove: (id: string, direction: "up" | "down") => void;
   onAddHighlight: (pid: string) => void;
   onUpdateHighlight: (pid: string, hid: number, key: "label" | "isi" | "icon", value: string) => void;
   onRemoveHighlight: (pid: string, hid: number) => void;
@@ -706,6 +999,24 @@ function PimpinanSection({
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
+                  <div className="flex flex-col shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-slate-400 hover:text-slate-600"
+                      onClick={() => onMove(p.id, "up")}
+                    >
+                      <ArrowUp className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-slate-400 hover:text-slate-600"
+                      onClick={() => onMove(p.id, "down")}
+                    >
+                      <ArrowDown className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                   <Button variant="ghost" size="icon" onClick={() => onToggle(p.id)}>
                     {p.expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                   </Button>
@@ -763,6 +1074,17 @@ function PimpinanSection({
                             />
                           </div>
                         </Field>
+                        <Field label="Status Aktif">
+                          <div className="flex items-center gap-2 mt-2">
+                            <input
+                              type="checkbox"
+                              checked={p.is_active !== false}
+                              onChange={(e) => onUpdate(p.id, "is_active", e.target.checked)}
+                              className="h-4 w-4 rounded border-slate-200 text-blue-600 focus:ring-blue-500"
+                            />
+                            <span className="text-xs text-slate-600 font-medium">Tampilkan di Website Publik</span>
+                          </div>
+                        </Field>
                       </div>
                     </div>
                   </div>
@@ -795,6 +1117,26 @@ function PimpinanSection({
                         onChange={(e) =>
                           onUpdate(p.id, "keahlian", e.target.value.split(",").map((s) => s.trim()).filter(Boolean))
                         }
+                      />
+                    </Field>
+                  </div>
+                  <div className="grid md:grid-cols-3 gap-4">
+                    <Field label="Email">
+                      <Input
+                        value={p.email || ""}
+                        onChange={(e) => onUpdate(p.id, "email", e.target.value)}
+                      />
+                    </Field>
+                    <Field label="LinkedIn URL">
+                      <Input
+                        value={p.linkedin || ""}
+                        onChange={(e) => onUpdate(p.id, "linkedin", e.target.value)}
+                      />
+                    </Field>
+                    <Field label="Telepon / WhatsApp">
+                      <Input
+                        value={p.telepon || ""}
+                        onChange={(e) => onUpdate(p.id, "telepon", e.target.value)}
                       />
                     </Field>
                   </div>
@@ -841,6 +1183,54 @@ function PimpinanSection({
                         onChange={(e) => onUpdate(p.id, "kontribusi", e.target.value)}
                       />
                     </Field>
+
+                    {/* Direktur-only extra fields */}
+                    {p.kategori === "direksi" && (
+                      <>
+                        <Field label="Visi Kepemimpinan">
+                          <Textarea
+                            rows={4}
+                            value={p.visiKepemimpinan || ""}
+                            onChange={(e) => onUpdate(p.id, "visiKepemimpinan", e.target.value)}
+                          />
+                        </Field>
+                        <Field label="Strategi Bisnis">
+                          <Textarea
+                            rows={4}
+                            value={p.strategiBisnis || ""}
+                            onChange={(e) => onUpdate(p.id, "strategiBisnis", e.target.value)}
+                          />
+                        </Field>
+                        <Field label="Fokus Pengembangan">
+                          <Textarea
+                            rows={4}
+                            value={p.fokusPengembangan || ""}
+                            onChange={(e) => onUpdate(p.id, "fokusPengembangan", e.target.value)}
+                          />
+                        </Field>
+                        <Field label="Target Perusahaan">
+                          <Textarea
+                            rows={4}
+                            value={p.targetPerusahaan || ""}
+                            onChange={(e) => onUpdate(p.id, "targetPerusahaan", e.target.value)}
+                          />
+                        </Field>
+                        <Field label="Portofolio Detail">
+                          <Textarea
+                            rows={4}
+                            value={p.portofolio || ""}
+                            onChange={(e) => onUpdate(p.id, "portofolio", e.target.value)}
+                          />
+                        </Field>
+                        <Field label="Sertifikasi Detail">
+                          <Textarea
+                            rows={4}
+                            value={p.sertifikasi || ""}
+                            onChange={(e) => onUpdate(p.id, "sertifikasi", e.target.value)}
+                          />
+                        </Field>
+                      </>
+                    )}
                   </div>
 
                   {/* Highlights */}

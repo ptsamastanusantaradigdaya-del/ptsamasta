@@ -98,37 +98,66 @@ export function useCmsPage<T>(slug: string): UseCmsPageResult<T> {
     });
   }, []);
 
-  const save = useCallback(async () => {
-    if (content === null) {
+  const save = useCallback(async (newContent?: T) => {
+    const contentToSave = newContent !== undefined ? newContent : content;
+    if (contentToSave === null) {
+      console.log("[useCmsPage:save] Content is null, skipping save.");
       toast.warning("Tidak ada perubahan untuk disimpan");
       return;
     }
     setSaving(true);
+    console.log("[useCmsPage:save] === STARTING SAVE PROCESS ===");
+    console.log("[useCmsPage:save] Target Slug:", slug);
+    console.log("[useCmsPage:save] Payload Content:", JSON.parse(JSON.stringify(contentToSave)));
+    
     try {
       const { data: userData, error: authErr } = await supabase.auth.getUser();
       if (authErr || !userData.user) {
+        console.error("[useCmsPage:save] Authentication Error:", authErr);
         throw new Error("Sesi Anda telah berakhir. Silakan masuk kembali.");
       }
+      
+      console.log("[useCmsPage:save] Authenticated User ID:", userData.user.id);
+      
+      const upsertPayload = {
+        slug,
+        content: contentToSave as never,
+        updated_by: userData.user.id,
+      };
+      
       const { error: err, data } = await supabase
         .from("cms_pages")
-        .upsert(
-          {
-            slug,
-            content: content as never,
-            updated_by: userData.user.id,
-          },
-          { onConflict: "slug" },
-        )
+        .upsert(upsertPayload, { onConflict: "slug" })
         .select("updated_at")
         .single();
+        
+      console.log("[useCmsPage:save] Supabase Upsert Response:", { data, error: err });
+      
       if (err) throw err;
+      
+      // Perform immediate SELECT to verify the value in database
+      const { data: verifyData, error: verifyErr } = await supabase
+        .from("cms_pages")
+        .select("slug, content, updated_at")
+        .eq("slug", slug)
+        .maybeSingle();
+        
+      console.log("[useCmsPage:save] SELECT verification after UPDATE:", { data: verifyData, error: verifyErr });
+      console.log("[CMS Hero Data]", {
+        slug: verifyData?.slug,
+        "content.hero.warna": verifyData?.content?.hero?.warna,
+        "content.hero": verifyData?.content?.hero
+      });
+
       setUpdatedAt(data?.updated_at ?? new Date().toISOString());
       setStatus("ready");
       toast.success("Perubahan tersimpan");
     } catch (e) {
+      console.error("[useCmsPage:save] Exception during save:", e);
       showError(e, "Gagal menyimpan perubahan");
     } finally {
       setSaving(false);
+      console.log("[useCmsPage:save] === SAVE PROCESS COMPLETED ===");
     }
   }, [content, slug]);
 

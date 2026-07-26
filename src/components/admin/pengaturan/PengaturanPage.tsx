@@ -61,10 +61,14 @@ export function PengaturanPage() {
     });
 
   const handleSave = async () => {
+    console.log("[PengaturanPage] handleSave triggered");
     try {
+      console.log("[PengaturanPage] calling cms.save()...");
       await cms.save();
+      console.log("[PengaturanPage] cms.save() call completed");
       toast.success("Pengaturan situs berhasil disimpan");
     } catch (e: any) {
+      console.error("[PengaturanPage] handleSave error:", e);
       toast.error("Gagal menyimpan pengaturan: " + e.message);
     }
   };

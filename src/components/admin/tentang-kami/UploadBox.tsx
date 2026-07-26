@@ -45,6 +45,9 @@ export function UploadBox({
     }
     setBusy(true);
     try {
+      if (folder.startsWith("layanan")) {
+        console.log(`[Detail Page] Storage Upload - file: ${file.name}, folder: ${folder}`);
+      }
       const url = await uploadMedia(file, folder);
       onChange(url);
       toast.success("Berhasil mengunggah");

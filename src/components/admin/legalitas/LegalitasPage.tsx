@@ -12,9 +12,9 @@ import { registerDefaults } from "@/lib/cms/defaults";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-const SLUG = "legalitas";
+const SLUG = "legalitas-perizinan";
 
-interface Dokumen { id: string; nama: string; nomor: string; penerbit: string; tanggal: string; deskripsi: string; file: string; featured: boolean }
+interface Dokumen { id: string; nama: string; nomor: string; penerbit: string; tanggal: string; deskripsi: string; file: string; featured: boolean; is_active?: boolean }
 interface Prinsip { id: number; judul: string; deskripsi: string; icon: string }
 interface LegalitasContent {
   hero: { title: string; subtitle: string; overlay: string; image: string };
@@ -59,23 +59,36 @@ export function LegalitasPage() {
   useEffect(() => {
     const fetchList = async () => {
       try {
-        const { data, error } = await supabase
-          .from("legalitas")
-          .select("*")
-          .order("sort_order", { ascending: true });
-        if (error) throw error;
-        setDokumenList(
-          (data ?? []).map((d) => ({
-            id: d.id,
-            nama: d.name || "",
-            nomor: d.number || "",
-            penerbit: d.issued_by || "",
-            tanggal: d.issued_at || "",
-            deskripsi: "", // We can use number or keep empty if not in DB
-            file: d.document_url || "",
-            featured: d.thumbnail_url === "featured",
-          }))
-        );
+        // Load layout config first to check for preserved document details
+        const { data: pageData } = await supabase
+          .from("cms_pages")
+          .select("content")
+          .eq("slug", SLUG)
+          .maybeSingle();
+
+        if (pageData && pageData.content && (pageData.content as any).dokumen && (pageData.content as any).dokumen.length > 0) {
+          setDokumenList((pageData.content as any).dokumen);
+        } else {
+          // Fallback load from legalitas table
+          const { data, error } = await supabase
+            .from("legalitas")
+            .select("*")
+            .order("sort_order", { ascending: true });
+          if (error) throw error;
+          setDokumenList(
+            (data ?? []).map((d) => ({
+              id: d.id,
+              nama: d.name || "",
+              nomor: d.number || "",
+              penerbit: d.issued_by || "",
+              tanggal: d.issued_at || "",
+              deskripsi: "",
+              file: d.document_url || "",
+              featured: d.thumbnail_url === "featured",
+              is_active: true,
+            }))
+          );
+        }
       } catch (e: any) {
         console.error("Gagal memuat dokumen legalitas: " + e.message);
       } finally {
@@ -87,8 +100,21 @@ export function LegalitasPage() {
 
   const handleSave = async () => {
     try {
-      // 1. Save layout to cms_pages
-      await cms.save();
+      const finalContent = {
+        ...c,
+        dokumen: dokumenList,
+      };
+
+      console.log("[Legalitas] Payload Save:", JSON.stringify({ cmsContent: finalContent, documents: dokumenList }, null, 2));
+
+      // 1. Save layout config with documents array to cms_pages
+      const { data: cmsRes, error: cmsErr } = await supabase
+        .from("cms_pages")
+        .update({ content: finalContent })
+        .eq("slug", SLUG)
+        .select();
+      if (cmsErr) throw cmsErr;
+      console.log("[Legalitas] Upsert Response - cms_pages:", cmsRes);
 
       // 2. Sync legalitas table
       const { data: existing } = await supabase.from("legalitas").select("id");
@@ -111,9 +137,19 @@ export function LegalitasPage() {
       }));
 
       if (upsertData.length > 0) {
-        const { error } = await supabase.from("legalitas").upsert(upsertData);
-        if (error) throw error;
+        const { data: dbRes, error: dbErr } = await supabase
+          .from("legalitas")
+          .upsert(upsertData)
+          .select();
+        if (dbErr) throw dbErr;
+        console.log("[Legalitas] Upsert Response - legalitas table:", dbRes);
       }
+
+      // 3. SELECT Verification
+      const { data: verifyCms } = await supabase.from("cms_pages").select("content").eq("slug", SLUG).maybeSingle();
+      const { data: verifyList } = await supabase.from("legalitas").select("*").order("sort_order", { ascending: true });
+      console.log("[Legalitas] SELECT Verification - cms_pages:", verifyCms);
+      console.log("[Legalitas] SELECT Verification - legalitas table:", verifyList);
 
       toast.success("Perubahan data legalitas berhasil disimpan");
     } catch (e: any) {
@@ -177,16 +213,22 @@ export function LegalitasPage() {
                 <Field label="File Dokumen / Preview">
                   <UploadBox height="h-24" folder={`legalitas/${dk.id}`} value={dk.file} onChange={(url) => setDokumenList(prev => prev.map(x => x.id === dk.id ? { ...x, file: url ?? "" } : x))} />
                 </Field>
-                <label className="flex items-center gap-2 text-sm text-slate-700">
-                  <input type="checkbox" checked={dk.featured} onChange={(e) => setDokumenList(prev => prev.map(x => x.id === dk.id ? { ...x, featured: e.target.checked } : x))} />
-                  Tampilkan sebagai dokumen unggulan (preview besar)
-                </label>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input type="checkbox" checked={dk.featured} onChange={(e) => setDokumenList(prev => prev.map(x => x.id === dk.id ? { ...x, featured: e.target.checked } : x))} />
+                    Tampilkan sebagai dokumen unggulan (preview besar)
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input type="checkbox" checked={dk.is_active !== false} onChange={(e) => setDokumenList(prev => prev.map(x => x.id === dk.id ? { ...x, is_active: e.target.checked } : x))} />
+                    Tampilkan di Website Publik (Status Aktif)
+                  </label>
+                </div>
               </div>
               <button onClick={() => setDokumenList(prev => prev.filter(x => x.id !== dk.id))} className="absolute top-2 right-2 text-slate-400 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
             </motion.div>
           ))}
         </AnimatePresence>
-        <Button variant="outline" onClick={() => setDokumenList(prev => [...prev, { id: crypto.randomUUID(), nama: "", nomor: "", penerbit: "", tanggal: "", deskripsi: "", file: "", featured: false }])} className="gap-2"><Plus className="h-4 w-4" /> Tambah Dokumen</Button>
+        <Button variant="outline" onClick={() => setDokumenList(prev => [...prev, { id: crypto.randomUUID(), nama: "", nomor: "", penerbit: "", tanggal: "", deskripsi: "", file: "", featured: false, is_active: true }])} className="gap-2"><Plus className="h-4 w-4" /> Tambah Dokumen</Button>
       </SectionCard>
 
       <SectionCard title="Prinsip Kepatuhan Perusahaan" icon={<FileText className="h-5 w-5 text-blue-600" />}>

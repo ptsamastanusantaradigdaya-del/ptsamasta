@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowRight } from "lucide-react";
+import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 
 type Article = {
@@ -11,18 +12,20 @@ type Article = {
   published_at: string | null;
 };
 
-const ArticlesSection = () => {
+const ArticlesSection = ({ cmsData }: { cmsData?: any }) => {
   const [articles, setArticles] = useState<Article[]>([]);
+  const limitCount = cmsData?.limitCount ?? 3;
 
   useEffect(() => {
     supabase
       .from("articles")
       .select("id,title,excerpt,category,thumbnail_url,published_at")
       .eq("is_published", true)
-      .order("sort_order", { ascending: true })
-      .limit(3)
+      .order("published_at", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(limitCount)
       .then(({ data }) => setArticles(data ?? []));
-  }, []);
+  }, [limitCount]);
 
   const formatDate = (d: string | null) => {
     if (!d) return "";
@@ -33,13 +36,18 @@ const ArticlesSection = () => {
     }
   };
 
+  const title = cmsData?.title ?? "Informasi Perusahaan";
+  const description = cmsData?.description ?? "Ketahui lebih jauh tentang insight perusahaan kami dengan detail terkini mengenai layanan kami secara detail.";
+  const viewAllText = cmsData?.viewAllText ?? "LIHAT SEMUA ARTIKEL";
+  const viewAllLink = cmsData?.viewAllLink ?? "/berita";
+
   return (
     <section id="berita" className="py-20 bg-muted/50">
       <div className="container mx-auto px-4">
         <div className="text-center mb-12 max-w-2xl mx-auto">
-          <h2 className="text-2xl md:text-3xl font-bold text-foreground">Informasi Perusahaan</h2>
+          <h2 className="text-2xl md:text-3xl font-bold text-foreground">{title}</h2>
           <p className="text-muted-foreground mt-3 text-sm">
-            Ketahui lebih jauh tentang insight perusahaan kami dengan detail terkini mengenai layanan kami secara detail.
+            {description}
           </p>
         </div>
 
@@ -69,9 +77,9 @@ const ArticlesSection = () => {
         </div>
 
         <div className="text-center mt-10">
-          <a href="#" className="inline-block px-8 py-3 border-2 border-foreground text-foreground font-semibold text-sm rounded-lg hover:bg-foreground hover:text-background transition-all duration-300">
-            LIHAT SEMUA ARTIKEL
-          </a>
+          <Link to={viewAllLink} className="inline-block px-8 py-3 border-2 border-foreground text-foreground font-semibold text-sm rounded-lg hover:bg-foreground hover:text-background transition-all duration-300">
+            {viewAllText}
+          </Link>
         </div>
       </div>
     </section>

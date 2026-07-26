@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import heroBg from "@/assets/hero-building.png";
 import { supabase } from "@/integrations/supabase/client";
 
-const HeroSection = () => {
+const HeroSection = ({ cmsData }: { cmsData?: any }) => {
   const [data, setData] = useState<{
     title: string;
     subtitle?: string | null;
@@ -12,6 +12,7 @@ const HeroSection = () => {
   } | null>(null);
 
   useEffect(() => {
+    if (cmsData) return;
     supabase
       .from("home_hero")
       .select("title,subtitle,cta_primary_label,cta_primary_href,image_url")
@@ -20,15 +21,13 @@ const HeroSection = () => {
       .limit(1)
       .maybeSingle()
       .then(({ data }) => data && setData(data));
-  }, []);
+  }, [cmsData]);
 
-  const title = data?.title ?? "Solusi Terpadu Dalam Pelayanan";
-  const subtitle =
-    data?.subtitle ??
-    "One-Stop Solution\nUntuk Membangun Pertumbuhan Bisnis Secara Profesional Dan Berkelanjutan";
-  const ctaLabel = data?.cta_primary_label ?? "PELAJARI TENTANG KAMI";
-  const ctaHref = data?.cta_primary_href ?? "/profil/tentang-kami";
-  const img = data?.image_url || heroBg;
+  const title = cmsData ? cmsData.headline.split("\n")[0] : (data?.title ?? "Solusi Terpadu Dalam Pelayanan");
+  const subtitle = cmsData ? cmsData.headline.split("\n").slice(1).join("\n") : (data?.subtitle ?? "One-Stop Solution\nUntuk Membangun Pertumbuhan Bisnis Secara Profesional Dan Berkelanjutan");
+  const ctaLabel = cmsData ? cmsData.ctaText : (data?.cta_primary_label ?? "PELAJARI TENTANG KAMI");
+  const ctaHref = cmsData ? cmsData.ctaLink : (data?.cta_primary_href ?? "/profil/tentang-kami");
+  const img = (cmsData ? cmsData.backgroundUrl : data?.image_url) || heroBg;
 
   return (
     <section className="relative min-h-[85vh] flex items-center justify-center overflow-hidden">

@@ -1,8 +1,10 @@
+import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import LayananOverview from "@/components/layanan/LayananOverview";
 import LayananDetail from "@/components/layanan/LayananDetail";
+import { supabase } from "@/integrations/supabase/client";
 import buildingBg from "@/assets/building-bg.jpg";
 
 const subPages = [
@@ -18,10 +20,35 @@ const Layanan = () => {
   const activeTab = subPage || "overview";
   const currentLabel = subPages.find((s) => s.key === activeTab)?.label || "Layanan";
 
+  const [cmsData, setCmsData] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchCms = async () => {
+      try {
+        const { data } = await supabase
+          .from("cms_pages")
+          .select("content")
+          .eq("slug", "layanan")
+          .maybeSingle();
+        if (data && data.content) {
+          setCmsData(data.content);
+        }
+      } catch (e) {
+        console.error("Gagal memuat CMS Layanan:", e);
+      }
+    };
+    void fetchCms();
+  }, []);
+
   const renderContent = () => {
-    if (activeTab === "overview") return <LayananOverview />;
+    if (activeTab === "overview") return <LayananOverview cmsData={cmsData?.section} />;
     return <LayananDetail serviceKey={activeTab} />;
   };
+
+  const heroTitle = cmsData?.hero?.judul ?? "Layanan Kami";
+  const heroSubtitle = cmsData?.hero?.subtitle ?? "Solusi Terpadu Dalam Pelayanan One - Stop Solution Untuk Membangun Pertumbuhan Bisnis Secara Profesional Dan Berkelanjutan";
+  const heroBgImage = cmsData?.hero?.backgroundUrl || buildingBg;
+  const heroOverlay = cmsData?.hero?.overlay || "#1E3A8A";
 
   return (
     <div className="min-h-screen bg-background">
@@ -30,8 +57,8 @@ const Layanan = () => {
       {/* Hero Banner */}
       <section className="relative pt-24 pb-16 overflow-hidden">
         <div className="absolute inset-0">
-          <img src={buildingBg} alt="" className="w-full h-full object-cover" />
-          <div className="absolute inset-0 bg-[#1E3A8A]/85" />
+          <img src={heroBgImage} alt="" className="w-full h-full object-cover" />
+          <div className="absolute inset-0" style={{ backgroundColor: heroOverlay, opacity: 0.85 }} />
         </div>
 
         <div className="container mx-auto px-4 text-center relative z-10">
@@ -48,10 +75,10 @@ const Layanan = () => {
           </div>
 
           <h1 className="text-3xl md:text-5xl font-extrabold text-primary-foreground mb-4">
-            Layanan Kami
+            {heroTitle}
           </h1>
-          <p className="text-primary-foreground/70 text-sm max-w-xl mx-auto">
-            Solusi Terpadu Dalam Pelayanan <em className="font-semibold">One - Stop Solution</em> Untuk Membangun Pertumbuhan Bisnis Secara Profesional Dan Berkelanjutan
+          <p className="text-primary-foreground/70 text-sm max-w-xl mx-auto whitespace-pre-line">
+            {heroSubtitle}
           </p>
         </div>
 
@@ -63,24 +90,6 @@ const Layanan = () => {
       </section>
 
       <main>{renderContent()}</main>
-
-      {/* CTA Section */}
-      <section className="py-16 bg-[#1E3A8A]">
-        <div className="container mx-auto px-4 text-center max-w-2xl">
-          <h2 className="text-2xl md:text-3xl font-bold text-white mb-4">
-            Butuh layanan sesuai kebutuhan Anda?
-          </h2>
-          <p className="text-white/70 text-sm mb-8">
-            Tim profesional kami siap membantu Anda menemukan solusi terbaik untuk mengembangkan bisnis Anda
-          </p>
-          <a
-            href="#kontak"
-            className="inline-flex items-center gap-2 px-8 py-3 bg-white text-[#1E3A8A] font-semibold rounded-lg hover:bg-white/90 transition-colors text-sm"
-          >
-            Ajukan Penawaran →
-          </a>
-        </div>
-      </section>
 
       <Footer />
     </div>

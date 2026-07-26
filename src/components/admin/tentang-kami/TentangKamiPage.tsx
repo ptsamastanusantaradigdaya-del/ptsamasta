@@ -47,7 +47,7 @@ interface TentangKamiContent {
     backgroundUrl: string | null;
     overlay: string;
   };
-  partnerLogos: { id: number; name: string; logoUrl: string | null }[];
+  partnerLogos: { id: number | string; name: string; logoUrl: string | null }[];
   profil: {
     badge: string;
     title: string;
@@ -60,8 +60,9 @@ interface TentangKamiContent {
   visiMisi: {
     title: string;
     tagline: string;
+    pilarTitle: string;
     visi: string;
-    highlights: { id: number; label: string; icon: string }[];
+    highlights: { id: number | string; label: string; icon: string }[];
     misiIntro: string;
     misi: string[];
   };
@@ -76,12 +77,12 @@ const defaults: TentangKamiContent = {
     overlay: "#1e3a8a",
   },
   partnerLogos: [
-    { id: 1, name: "Amaimarket", logoUrl: null },
-    { id: 2, name: "PaDI UMKM", logoUrl: null },
-    { id: 3, name: "Bela Pengadaan", logoUrl: null },
-    { id: 4, name: "SIPLah", logoUrl: null },
-    { id: 5, name: "e-Catalogue", logoUrl: null },
-    { id: 6, name: "LKPP", logoUrl: null },
+    { id: "9ca426cf-06f1-4db8-8318-6323cfbe4b91", name: "Amaimarket", logoUrl: null },
+    { id: "f5b026e6-c1eb-4752-9b22-ee594cb7bf4e", name: "PaDI UMKM", logoUrl: null },
+    { id: "7ab529fa-6bbf-4127-99bc-3b4791dc089f", name: "Bela Pengadaan", logoUrl: null },
+    { id: "37c95e1e-d4c3-4d43-9824-3486df81e592", name: "SIPLah", logoUrl: null },
+    { id: "8e3cb265-d01d-4de6-91e8-6925de9c693a", name: "e-Catalogue", logoUrl: null },
+    { id: "268f7b59-9944-4860-ae3b-b6f7cfab7f62", name: "LKPP", logoUrl: null },
   ],
   profil: {
     badge: "Profil Perusahaan",
@@ -97,11 +98,12 @@ const defaults: TentangKamiContent = {
     title: "Visi & Misi Kami",
     tagline:
       "Panduan strategis yang mengarahkan setiap langkah kami dalam melayani mitra bisnis",
+    pilarTitle: "Pilar Visi",
     visi: "Menjadi perusahaan nasional yang unggul, terpercaya, dan berdaya saing tinggi dalam menyediakan solusi usaha terintegrasi yang berkelanjutan serta memberikan kontribusi nyata bagi pembangunan dan kemajuan Nusantara.",
     highlights: [
-      { id: 1, label: "Unggul", icon: "award" },
-      { id: 2, label: "Terpercaya", icon: "shield" },
-      { id: 3, label: "Berdaya Saing", icon: "trending" },
+      { id: "a17ab56f-f5bf-4127-99bc-3b4791dc0a1a", label: "Unggul", icon: "award" },
+      { id: "b37c951e-e4c3-4d43-9824-3486df81e2b2", label: "Terpercaya", icon: "shield" },
+      { id: "c8e3cb65-e01d-4de6-91e8-6925de9c6c3c", label: "Berdaya Saing", icon: "trending" },
     ],
     misiIntro:
       "Dalam upaya mewujudkan visi besar perusahaan, PT Samasta Nusantara Digdaya berkomitmen untuk:",
@@ -194,6 +196,11 @@ export function TentangKamiPage() {
 
   const handleSave = async () => {
     try {
+      if (c) {
+        console.log("[TentangKami Hero] Payload Save:", JSON.stringify(c.hero, null, 2));
+        console.log("[Vision Section] Payload Save - sectionTitle:", c.visiMisi.title);
+        console.log("[Vision Section] Payload Save - pillarTitle:", c.visiMisi.pilarTitle);
+      }
       // 1. Save CMS layout configurations to cms_pages
       await cms.save();
 
@@ -209,7 +216,7 @@ export function TentangKamiPage() {
         const payloadMisi = c.visiMisi.misi.map((m) => `- ${m}`).join("\n");
 
         const aboutUpdates = [
-          { key: "profil", title: "Profil Perusahaan", body: payloadProfil, order: 1 },
+          { key: "profil", title: c.profil.title || "Profil Perusahaan", body: payloadProfil, order: 1 },
           { key: "highlight", title: "One-Stop Solution", body: c.profil.quote, order: 2 },
           { key: "visi", title: "Visi", body: c.visiMisi.visi, order: 3 },
           { key: "misi", title: "Misi", body: payloadMisi, order: 4 },
@@ -237,15 +244,25 @@ export function TentangKamiPage() {
           .eq("group_name", "tentang-kami");
         const currentIds = c.partnerLogos.map((p) => p.id);
         const toDelete = (existingPartners ?? []).map((p) => p.id).filter((id) => !currentIds.includes(id));
+        
+        console.log("[TentangKamiPage:handleSave] Syncing partners...");
+        console.log("[TentangKamiPage:handleSave] Current partner IDs in form:", currentIds);
+        console.log("[TentangKamiPage:handleSave] Partner IDs to delete from DB:", toDelete);
 
         if (toDelete.length > 0) {
-          await supabase.from("partners").delete().in("id", toDelete);
+          const { error: deleteErr } = await supabase.from("partners").delete().in("id", toDelete);
+          if (deleteErr) {
+            console.error("[TentangKamiPage:handleSave] Delete partners failed:", deleteErr);
+            throw deleteErr;
+          }
         }
 
         const upsertPartnersData = c.partnerLogos.map((p, idx) => {
-          const isNew = typeof p.id === "number" || !p.id.includes("-");
+          const idStr = String(p.id);
+          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idStr);
+          const finalId = isUuid ? idStr : crypto.randomUUID();
           return {
-            id: isNew ? undefined : p.id,
+            id: finalId,
             name: p.name || "Partner",
             logo_url: p.logoUrl || "",
             group_name: "tentang-kami",
@@ -254,14 +271,31 @@ export function TentangKamiPage() {
           };
         });
 
+        console.log("[TentangKamiPage:handleSave] Upserting partners data to DB:", JSON.parse(JSON.stringify(upsertPartnersData)));
+
         if (upsertPartnersData.length > 0) {
-          const { error } = await supabase.from("partners").upsert(upsertPartnersData);
-          if (error) throw error;
+          const { data: upsertRes, error: upsertErr } = await supabase
+            .from("partners")
+            .upsert(upsertPartnersData)
+            .select();
+            
+          console.log("[TentangKamiPage:handleSave] Upsert response:", { data: upsertRes, error: upsertErr });
+          
+          if (upsertErr) {
+            console.error("[TentangKamiPage:handleSave] Upsert failed with error details:", {
+              message: upsertErr.message,
+              details: upsertErr.details,
+              hint: upsertErr.hint,
+              code: upsertErr.code
+            });
+            throw upsertErr;
+          }
         }
       }
 
       toast.success("Halaman Tentang Kami berhasil disimpan");
     } catch (e: any) {
+      console.error("[TentangKamiPage:handleSave] Exception during handleSave:", e);
       toast.error("Gagal menyimpan data Tentang Kami: " + e.message);
     }
   };
@@ -431,7 +465,7 @@ export function TentangKamiPage() {
               type="button"
               onClick={() =>
                 patch((d) => {
-                  d.partnerLogos.push({ id: Date.now(), name: "", logoUrl: null });
+                  d.partnerLogos.push({ id: crypto.randomUUID(), name: "", logoUrl: null });
                 })
               }
               className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors"
@@ -505,6 +539,12 @@ export function TentangKamiPage() {
                 onChange={(e) => patch((d) => { d.visiMisi.tagline = e.target.value; })}
               />
             </Field>
+            <Field label="Judul Sub Section (Pilar Visi)">
+              <Input
+                value={c.visiMisi.pilarTitle || ""}
+                onChange={(e) => patch((d) => { d.visiMisi.pilarTitle = e.target.value; })}
+              />
+            </Field>
 
             {/* Visi */}
             <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/50 p-4">
@@ -531,7 +571,7 @@ export function TentangKamiPage() {
                     onClick={() =>
                       patch((d) => {
                         d.visiMisi.highlights.push({
-                          id: Date.now(),
+                          id: crypto.randomUUID(),
                           label: "",
                           icon: "sparkles",
                         });

@@ -105,6 +105,7 @@ export function LayananPage() {
             .select("*")
             .order("sort_order");
           if (error) throw error;
+          console.log("[Service Card] Fetch Result - service_categories:", data);
           if (data && data.length > 0) {
             patch((d) => {
               d.cards = data.map((cat) => {
@@ -134,24 +135,45 @@ export function LayananPage() {
 
   const handleSave = async () => {
     try {
+      if (!c) return;
+      console.log("[Service Card] Save Payload - cards:", c.cards);
+
       // 1. Save layouts to cms_pages
       await cms.save();
 
-      // 2. Upsert service_categories
-      if (c) {
-        const upsertData = c.cards.map((card, idx) => ({
-          slug: card.id,
-          name: card.nama,
-          short_description: card.deskripsi,
-          icon: card.icon,
-          color_theme: card.warna,
-          sort_order: idx,
-          is_active: card.aktif,
-        }));
+      // 2. Sync deletes in service_categories table
+      const { data: existingCats } = await supabase.from("service_categories").select("slug");
+      const currentSlugs = c.cards.map((card) => card.id);
+      const toDeleteSlugs = (existingCats ?? []).map((cat) => cat.slug).filter((slug) => !currentSlugs.includes(slug));
 
-        const { error } = await supabase.from("service_categories").upsert(upsertData, { onConflict: "slug" });
-        if (error) throw error;
+      if (toDeleteSlugs.length > 0) {
+        const { data: delRes, error: delErr } = await supabase
+          .from("service_categories")
+          .delete()
+          .in("slug", toDeleteSlugs)
+          .select();
+        if (delErr) throw delErr;
+        console.log("[Service Card] Delete - slugs:", toDeleteSlugs, "response:", delRes);
       }
+
+      // 3. Upsert service_categories
+      const upsertData = c.cards.map((card, idx) => ({
+        slug: card.id,
+        name: card.nama,
+        short_description: card.deskripsi,
+        icon: card.icon,
+        color_theme: card.warna,
+        sort_order: idx,
+        is_active: card.aktif,
+      }));
+
+      const { data: saveRes, error } = await supabase
+        .from("service_categories")
+        .upsert(upsertData, { onConflict: "slug" })
+        .select();
+      if (error) throw error;
+      console.log("[Service Card] Save Response - categories upsert result:", saveRes);
+
       toast.success("Halaman Layanan berhasil disimpan");
     } catch (e: any) {
       toast.error("Gagal menyimpan data layanan: " + e.message);

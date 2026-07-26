@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Eye, Shield, TrendingUp, CheckCircle } from "lucide-react";
+import { Eye, Shield, TrendingUp, CheckCircle, Award, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import PartnersSection from "@/components/PartnersSection";
 
 type Section = { section_key: string; title: string | null; body: string | null };
 
@@ -13,9 +14,23 @@ const renderMarkdown = (text: string) =>
     )
   );
 
+const getPillarIcon = (iconName: string) => {
+  switch (iconName?.toLowerCase()) {
+    case "award":
+      return Award;
+    case "shield":
+      return Shield;
+    case "trending":
+      return TrendingUp;
+    case "sparkles":
+    default:
+      return Sparkles;
+  }
+};
+
 const TentangKami = () => {
   const [sections, setSections] = useState<Record<string, Section>>({});
-  const [partners, setPartners] = useState<{ name: string; logo_url: string }[]>([]);
+  const [cmsContent, setCmsContent] = useState<any>(null);
 
   useEffect(() => {
     supabase
@@ -27,16 +42,71 @@ const TentangKami = () => {
         (data ?? []).forEach((s) => (map[s.section_key] = s));
         setSections(map);
       });
+
     supabase
-      .from("partners")
-      .select("name,logo_url")
-      .eq("is_active", true)
-      .order("sort_order")
-      .then(({ data }) => setPartners(data ?? []));
+      .from("cms_pages")
+      .select("content")
+      .eq("slug", "tentang-kami")
+      .maybeSingle()
+      .then(({ data }) => {
+        console.log("[Vision Section] Database Value (raw data):", data);
+        if (data && data.content) {
+          setCmsContent(data.content);
+        }
+      });
   }, []);
 
-  const profil = sections["profil"];
-  const highlight = sections["highlight"];
+  useEffect(() => {
+    if (cmsContent && cmsContent.profil) {
+      const p = cmsContent.profil;
+      console.log("[Profile Section] Fetched Profile JSON:", JSON.stringify(p, null, 2));
+      console.log("[Profile Section] Badge:", p.badge);
+      console.log("[Profile Section] Title:", p.title);
+      console.log("[Profile Section] Paragraph1:", p.p1);
+      console.log("[Profile Section] Paragraph2:", p.p2);
+      console.log("[Profile Section] Paragraph3:", p.p3);
+      console.log("[Profile Section] Paragraph4:", p.p4);
+      console.log("[Profile Section] Highlight Quote:", p.quote);
+    }
+    if (cmsContent && cmsContent.visiMisi) {
+      const v = cmsContent.visiMisi;
+      console.log("[Vision Section] Fetched Value - sectionTitle:", v.title);
+      console.log("[Vision Section] Fetched Value - pillarTitle:", v.pilarTitle);
+    }
+  }, [cmsContent]);
+
+  const profilObj = cmsContent?.profil;
+  const badge = profilObj?.badge || "Profil Perusahaan";
+  const title = profilObj?.title || sections["profil"]?.title || "Profil Perusahaan";
+  const quote = profilObj?.quote || sections["highlight"]?.body || "";
+
+  // Paragraphs
+  const p1 = profilObj?.p1 || sections["profil"]?.body?.split("\n\n")[0] || "";
+  const p2 = profilObj?.p2 || sections["profil"]?.body?.split("\n\n")[1] || "";
+  const p3 = profilObj?.p3 || sections["profil"]?.body?.split("\n\n")[2] || "";
+  const p4 = profilObj?.p4 || sections["profil"]?.body?.split("\n\n")[3] || "";
+
+  console.log("[Profile Section] Rendered Badge:", badge);
+  console.log("[Profile Section] Rendered Title:", title);
+  console.log("[Profile Section] Rendered Paragraph1:", p1);
+  console.log("[Profile Section] Rendered Paragraph2:", p2);
+  console.log("[Profile Section] Rendered Paragraph3:", p3);
+  console.log("[Profile Section] Rendered Paragraph4:", p4);
+  console.log("[Profile Section] Rendered Highlight Quote:", quote);
+
+  // Vision Mission dynamic variables
+  const sectionTitle = cmsContent?.visiMisi?.title || "Visi & Misi Kami";
+  const tagline = cmsContent?.visiMisi?.tagline || "Panduan strategis yang mengarahkan langkah kami dalam melayani mitra bisnis";
+  const pillarTitle = cmsContent?.visiMisi?.pilarTitle || "Pilar Visi";
+  const highlights = cmsContent?.visiMisi?.highlights || [
+    { id: "a17ab56f-f5bf-4127-99bc-3b4791dc0a1a", label: "Unggul", icon: "award" },
+    { id: "b37c951e-e4c3-4d43-9824-3486df81e2b2", label: "Terpercaya", icon: "shield" },
+    { id: "c8e3cb65-e01d-4de6-91e8-6925de9c6c3c", label: "Berdaya Saing", icon: "trending" },
+  ];
+
+  console.log("[Vision Section] Rendered Value - sectionTitle:", sectionTitle);
+  console.log("[Vision Section] Rendered Value - pillarTitle:", pillarTitle);
+
   const visi = sections["visi"];
   const misi = sections["misi"];
 
@@ -47,32 +117,25 @@ const TentangKami = () => {
 
   return (
     <div>
-      <section className="py-8 bg-muted">
-        <div className="container mx-auto px-4">
-          <div className="flex flex-wrap items-center justify-center gap-6">
-            {partners.map((p) => (
-              <img key={p.name} src={p.logo_url} alt={p.name} className="h-10 md:h-12 w-auto object-contain" />
-            ))}
-          </div>
-        </div>
-      </section>
+      <PartnersSection groupName="tentang-kami" showTitle={false} className="py-8 bg-muted" />
 
       <section className="py-16 bg-background">
         <div className="container mx-auto px-4 max-w-4xl">
           <div className="inline-block bg-[#1E3A8A]/10 text-[#1E3A8A] text-xs font-semibold px-3 py-1 rounded-full mb-4">
-            Profil Perusahaan
+            {badge}
           </div>
-          <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-6">{profil?.title ?? "Profil Perusahaan"}</h2>
+          <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-6">{title}</h2>
 
           <div className="space-y-4 text-sm text-muted-foreground leading-relaxed">
-            {(profil?.body ?? "").split(/\n\n+/).map((para, i) => (
-              <p key={i}>{renderMarkdown(para)}</p>
-            ))}
+            {p1 && <p>{renderMarkdown(p1)}</p>}
+            {p2 && <p>{renderMarkdown(p2)}</p>}
+            {p3 && <p>{renderMarkdown(p3)}</p>}
+            {p4 && <p>{renderMarkdown(p4)}</p>}
           </div>
 
-          {highlight && (
+          {quote && (
             <div className="mt-8 bg-gradient-to-r from-[#1E3A8A] to-[#1D4ED8] rounded-xl p-6 text-primary-foreground">
-              <p className="text-sm leading-relaxed italic">{highlight.body}</p>
+              <p className="text-sm leading-relaxed italic">{quote}</p>
             </div>
           )}
         </div>
@@ -80,9 +143,9 @@ const TentangKami = () => {
 
       <section className="py-16 bg-muted">
         <div className="container mx-auto px-4 max-w-4xl text-center">
-          <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-2">Visi & Misi Kami</h2>
+          <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-2">{sectionTitle}</h2>
           <p className="text-sm text-muted-foreground mb-10">
-            Panduan strategis yang mengarahkan langkah kami dalam melayani mitra bisnis
+            {tagline}
           </p>
 
           {visi && (
@@ -94,10 +157,24 @@ const TentangKami = () => {
                 <h3 className="text-lg font-bold text-foreground">{visi.title ?? "Visi"}</h3>
               </div>
               <p className="text-sm text-muted-foreground leading-relaxed">{renderMarkdown(visi.body ?? "")}</p>
-              <div className="flex items-center justify-center gap-8 mt-6">
-                <div className="flex flex-col items-center gap-1"><Shield size={20} className="text-[#1E3A8A]" /><span className="text-xs text-muted-foreground">Unggul</span></div>
-                <div className="flex flex-col items-center gap-1"><Eye size={20} className="text-[#1E3A8A]" /><span className="text-xs text-muted-foreground">Terpercaya</span></div>
-                <div className="flex flex-col items-center gap-1"><TrendingUp size={20} className="text-[#1E3A8A]" /><span className="text-xs text-muted-foreground">Berdaya Saing</span></div>
+              
+              <div className="mt-6 border-t border-border/60 pt-4">
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider text-center mb-3">
+                  {pillarTitle}
+                </div>
+                {highlights && highlights.length > 0 && (
+                  <div className="flex flex-wrap items-center justify-center gap-8">
+                    {highlights.map((h: any, hi: number) => {
+                      const IconComponent = getPillarIcon(h.icon);
+                      return (
+                        <div key={h.id || hi} className="flex flex-col items-center gap-1">
+                          <IconComponent size={20} className="text-[#1E3A8A]" />
+                          <span className="text-xs text-muted-foreground font-medium">{h.label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           )}

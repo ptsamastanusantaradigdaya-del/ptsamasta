@@ -34,20 +34,20 @@ const SectionIcon = ({ children }: { children: React.ReactNode }) => (
   </span>
 );
 
-const uid = () => Date.now() + Math.random();
+const uid = () => crypto.randomUUID();
 
-interface NavLink { id: number; label: string; url: string }
-interface Partner { id: number; name: string; logoUrl: string | null }
-interface Article { id: number; category: string; date: string; title: string; excerpt: string; coverUrl: string | null }
-interface Feature { id: number; title: string; description: string; points: string[]; iconUrl: string | null }
-interface SocialLink { id: number; platform: string; url: string }
+interface NavLink { id: number | string; label: string; url: string }
+interface Partner { id: number | string; name: string; logoUrl: string | null }
+interface Article { id: number | string; category: string; date: string; title: string; excerpt: string; coverUrl: string | null }
+interface Feature { id: number | string; title: string; description: string; points: string[]; iconUrl: string | null }
+interface SocialLink { id: number | string; platform: string; url: string }
 
 interface BerandaContent {
   published: boolean;
   header: { logoUrl: string | null; brandName: string; nav: NavLink[] };
   hero: { headline: string; ctaText: string; ctaLink: string; backgroundUrl: string | null };
   mitra: { title: string; subtitle: string; partners: Partner[] };
-  informasi: { title: string; description: string; articles: Article[]; viewAllText: string; viewAllLink: string };
+  informasi: { title: string; description: string; viewAllText: string; viewAllLink: string; limitCount?: number };
   mengapa: { title: string; subtitle: string; description: string; features: Feature[] };
   cta: { title: string; description: string; primaryText: string; primaryLink: string; secondaryText: string; secondaryLink: string };
   footer: {
@@ -99,38 +99,9 @@ const defaults: BerandaContent = {
     title: "Informasi Perusahaan",
     description:
       "Ketahui lebih jauh tentang Insight perusahaan kami dengan detail dipisah mengenai layanan kami secara detail. Dengan klaim kami yang jelas sebagai pelayanan terbaik, PT Samasta Nusantara Digdaya Terpercaya",
-    articles: [
-      {
-        id: 1,
-        category: "Kerjasama Bisnis",
-        date: "2026-01-20",
-        title:
-          "Menjajaki Potensi Peluang Kerjasama Strategis dengan Kamar Dagang dan Industri",
-        excerpt:
-          "PT Samasta Nusantara Digdaya terus membuka peluang kerjasama strategis dengan berbagai institusi bisnis...",
-        coverUrl: null,
-      },
-      {
-        id: 2,
-        category: "Teknologi",
-        date: "2026-01-15",
-        title: "Strategi Transformasi Digital untuk Meningkatkan Efisiensi Bisnis",
-        excerpt:
-          "Bagaimana transformasi digital dapat membantu meningkatkan produktivitas dan efisiensi operasional...",
-        coverUrl: null,
-      },
-      {
-        id: 3,
-        category: "Hukum & Regulasi",
-        date: "2026-01-12",
-        title: "Pentingnya Kepatuhan Hukum dan Regulasi dalam Bisnis B2B",
-        excerpt:
-          "Memahami aspek legal dan regulasi yang harus diperhatikan dalam menjalankan bisnis B2B...",
-        coverUrl: null,
-      },
-    ],
     viewAllText: "Lihat Semua Artikel",
     viewAllLink: "/berita",
+    limitCount: 3,
   },
   mengapa: {
     title: "Mengapa Memilih Kami?",
@@ -330,9 +301,11 @@ export function BerandaPage() {
         }
 
         const upsertWhyData = c.mengapa.features.map((f, idx) => {
-          const isNew = typeof f.id === "number" || !f.id.includes("-");
+          const idStr = String(f.id);
+          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idStr);
+          const finalId = isUuid ? idStr : crypto.randomUUID();
           return {
-            id: isNew ? undefined : f.id,
+            id: finalId,
             title: f.title,
             description: f.description,
             icon: f.iconUrl || "Sparkles",
@@ -359,9 +332,11 @@ export function BerandaPage() {
         }
 
         const upsertPartnersData = c.mitra.partners.map((p, idx) => {
-          const isNew = typeof p.id === "number" || !p.id.includes("-");
+          const idStr = String(p.id);
+          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idStr);
+          const finalId = isUuid ? idStr : crypto.randomUUID();
           return {
-            id: isNew ? undefined : p.id,
+            id: finalId,
             name: p.name || "Partner",
             logo_url: p.logoUrl || "",
             group_name: "home",
@@ -583,50 +558,15 @@ export function BerandaPage() {
               <Textarea rows={3} value={c.informasi.description} onChange={(e) => patch((d) => { d.informasi.description = e.target.value; })} />
             </Field>
 
-            <div className="flex items-center justify-between pt-2">
-              <span className="text-sm font-semibold text-slate-700">Artikel Pilihan (maks. 3)</span>
-              <button
-                type="button"
-                onClick={() => patch((d) => { d.informasi.articles.push({ id: uid(), category: "", date: "", title: "", excerpt: "", coverUrl: null }); })}
-                className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700"
-              >
-                <Plus className="h-4 w-4" /> Tambah Artikel
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              <AnimatePresence>
-                {c.informasi.articles.map((a, i) => (
-                  <motion.div
-                    key={a.id}
-                    layout
-                    initial={{ opacity: 0, scale: 0.96 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.96 }}
-                    className="relative group bg-white border border-slate-200 rounded-xl p-3 space-y-2.5 hover:shadow-md transition-shadow"
-                  >
-                    <button
-                      onClick={() => patch((d) => { d.informasi.articles.splice(i, 1); })}
-                      className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition p-1.5 rounded-md bg-white shadow text-slate-400 hover:text-red-600"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                    <UploadBox
-                      height="h-32"
-                      label="Cover artikel"
-                      hint=""
-                      folder="beranda/articles"
-                      value={a.coverUrl}
-                      onChange={(url) => patch((d) => { d.informasi.articles[i].coverUrl = url; })}
-                    />
-                    <Input value={a.category} onChange={(e) => patch((d) => { d.informasi.articles[i].category = e.target.value; })} placeholder="Kategori (badge biru)" className="h-9 text-sm" />
-                    <Input value={a.date} onChange={(e) => patch((d) => { d.informasi.articles[i].date = e.target.value; })} placeholder="Tanggal" type="date" className="h-9 text-sm" />
-                    <Input value={a.title} onChange={(e) => patch((d) => { d.informasi.articles[i].title = e.target.value; })} placeholder="Judul artikel" className="h-9 text-sm font-medium" />
-                    <Textarea value={a.excerpt} onChange={(e) => patch((d) => { d.informasi.articles[i].excerpt = e.target.value; })} placeholder="Ringkasan artikel" rows={3} />
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-            </div>
+            <Field label="Jumlah Berita yang Ditampilkan">
+              <Input
+                type="number"
+                min={1}
+                max={20}
+                value={c.informasi.limitCount ?? 3}
+                onChange={(e) => patch((d) => { d.informasi.limitCount = parseInt(e.target.value) || 3; })}
+              />
+            </Field>
 
             <div className="grid md:grid-cols-2 gap-5 pt-2">
               <Field label="Teks Tombol 'Lihat Semua Artikel'">

@@ -1,6 +1,17 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Award, LayoutPanelTop, Plus, Trash2, ListChecks, FileText, GripVertical } from "lucide-react";
+import {
+  Award,
+  LayoutPanelTop,
+  Plus,
+  Trash2,
+  ListChecks,
+  FileText,
+  GripVertical,
+  ArrowUp,
+  ArrowDown,
+  Search,
+} from "lucide-react";
 import { SectionCard, Field } from "@/components/admin/tentang-kami/SectionCard";
 import { UploadBox } from "@/components/admin/tentang-kami/UploadBox";
 import { Input } from "@/components/ui/input";
@@ -16,7 +27,7 @@ const SLUG = "keunggulan";
 
 type ListItem = { id: number; text: string };
 type SopSection = { id: number; title: string; items: ListItem[] };
-type Keunggulan = { id: string; judul: string; deskripsi: string; icon?: string };
+type Keunggulan = { id: string; judul: string; deskripsi: string; icon?: string; is_active?: boolean };
 interface KeunggulanContent {
   hero: { title: string; subtitle: string; overlay: string; image: string };
   deskripsi: { p1: string; p2: string };
@@ -95,19 +106,32 @@ export function KeunggulanPage() {
   useEffect(() => {
     const fetchList = async () => {
       try {
-        const { data, error } = await supabase
-          .from("keunggulan")
-          .select("*")
-          .order("sort_order", { ascending: true });
-        if (error) throw error;
-        setKeunggulanList(
-          (data ?? []).map((k) => ({
-            id: k.id,
-            judul: k.title || "",
-            deskripsi: k.description || "",
-            icon: k.icon || "Award",
-          }))
-        );
+        // Load layout config first to check for preserved advantages details
+        const { data: pageData } = await supabase
+          .from("cms_pages")
+          .select("content")
+          .eq("slug", SLUG)
+          .maybeSingle();
+
+        if (pageData && pageData.content && (pageData.content as any).keunggulan && (pageData.content as any).keunggulan.length > 0) {
+          setKeunggulanList((pageData.content as any).keunggulan);
+        } else {
+          // Fallback load from keunggulan table
+          const { data, error } = await supabase
+            .from("keunggulan")
+            .select("*")
+            .order("sort_order", { ascending: true });
+          if (error) throw error;
+          setKeunggulanList(
+            (data ?? []).map((k) => ({
+              id: k.id,
+              judul: k.title || "",
+              deskripsi: k.description || "",
+              icon: k.icon || "Award",
+              is_active: true,
+            }))
+          );
+        }
       } catch (e: any) {
         console.error("Gagal memuat keunggulan: " + e.message);
       } finally {
@@ -119,8 +143,21 @@ export function KeunggulanPage() {
 
   const handleSave = async () => {
     try {
-      // 1. Save SOP and layouts to cms_pages
-      await cms.save();
+      const finalContent = {
+        ...c,
+        keunggulan: keunggulanList,
+      };
+
+      console.log("[Keunggulan] Payload Save:", JSON.stringify({ cmsContent: finalContent, keunggulanList }, null, 2));
+
+      // 1. Save SOP and layouts with keunggulan list to cms_pages
+      const { data: cmsRes, error: cmsErr } = await supabase
+        .from("cms_pages")
+        .update({ content: finalContent })
+        .eq("slug", SLUG)
+        .select();
+      if (cmsErr) throw cmsErr;
+      console.log("[Keunggulan] Upsert Response - cms_pages:", cmsRes);
 
       // 2. Sync keunggulan table
       const { data: existing } = await supabase.from("keunggulan").select("id");
@@ -140,9 +177,19 @@ export function KeunggulanPage() {
       }));
 
       if (upsertData.length > 0) {
-        const { error } = await supabase.from("keunggulan").upsert(upsertData);
-        if (error) throw error;
+        const { data: dbRes, error: dbErr } = await supabase
+          .from("keunggulan")
+          .upsert(upsertData)
+          .select();
+        if (dbErr) throw dbErr;
+        console.log("[Keunggulan] Upsert Response - keunggulan table:", dbRes);
       }
+
+      // 3. SELECT Verification
+      const { data: verifyCms } = await supabase.from("cms_pages").select("content").eq("slug", SLUG).maybeSingle();
+      const { data: verifyList } = await supabase.from("keunggulan").select("*").order("sort_order", { ascending: true });
+      console.log("[Keunggulan] SELECT Verification - cms_pages:", verifyCms);
+      console.log("[Keunggulan] SELECT Verification - keunggulan table:", verifyList);
 
       toast.success("Perubahan data keunggulan berhasil disimpan");
     } catch (e: any) {
@@ -150,20 +197,66 @@ export function KeunggulanPage() {
     }
   };
 
-  const renderList = (label: string, items: ListItem[], mutate: (draft: KeunggulanContent) => ListItem[]) => (
-    <div className="space-y-2">
-      <AnimatePresence>
-        {items.map((it, i) => (
-          <motion.div key={it.id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex gap-2 items-center">
-            <GripVertical className="h-4 w-4 text-slate-300" />
-            <Input value={it.text} onChange={(e) => patch((d) => { mutate(d)[i].text = e.target.value; })} />
-            <button onClick={() => patch((d) => { mutate(d).splice(i, 1); })} className="text-slate-400 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
-          </motion.div>
-        ))}
-      </AnimatePresence>
-      <Button variant="outline" size="sm" onClick={() => patch((d) => { mutate(d).push({ id: Date.now(), text: "" }); })} className="gap-2"><Plus className="h-3.5 w-3.5" /> Tambah {label}</Button>
-    </div>
-  );
+  const renderList = (label: string, items: ListItem[], mutate: (draft: KeunggulanContent) => ListItem[]) => {
+    const moveItem = (i: number, direction: "up" | "down") => {
+      const target = direction === "up" ? i - 1 : i + 1;
+      if (target < 0 || target >= items.length) return;
+      patch((d) => {
+        const list = mutate(d);
+        const temp = list[i];
+        list[i] = list[target];
+        list[target] = temp;
+      });
+    };
+
+    return (
+      <div className="space-y-2">
+        <AnimatePresence>
+          {items.map((it, i) => (
+            <motion.div key={it.id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex gap-2 items-center">
+              <div className="flex flex-col shrink-0">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-5 w-5 text-slate-400 hover:text-slate-600"
+                  type="button"
+                  onClick={() => moveItem(i, "up")}
+                >
+                  <ArrowUp className="h-3 w-3" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-5 w-5 text-slate-400 hover:text-slate-600"
+                  type="button"
+                  onClick={() => moveItem(i, "down")}
+                >
+                  <ArrowDown className="h-3 w-3" />
+                </Button>
+              </div>
+              <Input value={it.text} onChange={(e) => patch((d) => { mutate(d)[i].text = e.target.value; })} />
+              <button onClick={() => patch((d) => { mutate(d).splice(i, 1); })} className="text-slate-400 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+        <Button variant="outline" size="sm" onClick={() => patch((d) => { mutate(d).push({ id: Date.now(), text: "" }); })} className="gap-2"><Plus className="h-3.5 w-3.5" /> Tambah {label}</Button>
+      </div>
+    );
+  };
+
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const moveKeunggulan = (i: number, direction: "up" | "down") => {
+    const target = direction === "up" ? i - 1 : i + 1;
+    if (target < 0 || target >= keunggulanList.length) return;
+    setKeunggulanList((prev) => {
+      const next = [...prev];
+      const temp = next[i];
+      next[i] = next[target];
+      next[target] = temp;
+      return next;
+    });
+  };
 
   return (
     <CmsPageShell
@@ -201,25 +294,69 @@ export function KeunggulanPage() {
         <Field label="Paragraf 2"><Textarea rows={4} value={c.deskripsi.p2} onChange={(e) => patch((d) => { d.deskripsi.p2 = e.target.value; })} /></Field>
       </SectionCard>
 
+      {/* Search Bar for Keunggulan list */}
+      <div className="flex items-center gap-3 bg-white p-4 rounded-xl border border-slate-200">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+          <Input
+            placeholder="Cari keunggulan berdasarkan judul..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-9 bg-slate-50/50"
+          />
+        </div>
+      </div>
+
       <SectionCard title="Daftar Keunggulan" description="Kartu keunggulan perusahaan" icon={<Award className="h-5 w-5 text-blue-600" />}>
         <AnimatePresence>
-          {keunggulanList.map((k, i) => (
-            <motion.div key={k.id} layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="p-4 rounded-lg border bg-slate-50/60 relative space-y-3">
-              <div className="flex items-center gap-2 text-xs text-slate-500">No. {i + 1}</div>
-              <div className="grid md:grid-cols-[140px_1fr] gap-3">
-                <Field label="Icon">
-                  <Input value={k.icon} onChange={(e) => setKeunggulanList(prev => prev.map(x => x.id === k.id ? { ...x, icon: e.target.value } : x))} />
-                </Field>
-                <Field label="Judul">
-                  <Input value={k.judul} onChange={(e) => setKeunggulanList(prev => prev.map(x => x.id === k.id ? { ...x, judul: e.target.value } : x))} />
-                </Field>
-              </div>
-              <Field label="Deskripsi"><Textarea rows={3} value={k.deskripsi} onChange={(e) => setKeunggulanList(prev => prev.map(x => x.id === k.id ? { ...x, deskripsi: e.target.value } : x))} /></Field>
-              <button onClick={() => setKeunggulanList(prev => prev.filter(x => x.id !== k.id))} className="absolute top-2 right-2 text-slate-400 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
-            </motion.div>
-          ))}
+          {keunggulanList
+            .filter((k) => k.judul.toLowerCase().includes(searchTerm.toLowerCase()) || k.deskripsi.toLowerCase().includes(searchTerm.toLowerCase()))
+            .map((k, i) => (
+              <motion.div key={k.id} layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="p-4 rounded-lg border bg-slate-50/60 relative space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex flex-col shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-5 w-5 text-slate-400 hover:text-slate-600"
+                      onClick={() => moveKeunggulan(i, "up")}
+                    >
+                      <ArrowUp className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-5 w-5 text-slate-400 hover:text-slate-600"
+                      onClick={() => moveKeunggulan(i, "down")}
+                    >
+                      <ArrowDown className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                  <span className="text-xs text-slate-500 font-semibold">No. {i + 1}</span>
+                  <label className="flex items-center gap-1.5 text-xs text-slate-600 ml-auto cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={k.is_active !== false}
+                      onChange={(e) => setKeunggulanList(prev => prev.map(x => x.id === k.id ? { ...x, is_active: e.target.checked } : x))}
+                      className="h-3.5 w-3.5 rounded border-slate-200 text-blue-600 cursor-pointer"
+                    />
+                    <span>Aktif</span>
+                  </label>
+                </div>
+                <div className="grid md:grid-cols-[140px_1fr] gap-3">
+                  <Field label="Icon">
+                    <Input value={k.icon} onChange={(e) => setKeunggulanList(prev => prev.map(x => x.id === k.id ? { ...x, icon: e.target.value } : x))} />
+                  </Field>
+                  <Field label="Judul">
+                    <Input value={k.judul} onChange={(e) => setKeunggulanList(prev => prev.map(x => x.id === k.id ? { ...x, judul: e.target.value } : x))} />
+                  </Field>
+                </div>
+                <Field label="Deskripsi"><Textarea rows={3} value={k.deskripsi} onChange={(e) => setKeunggulanList(prev => prev.map(x => x.id === k.id ? { ...x, deskripsi: e.target.value } : x))} /></Field>
+                <button onClick={() => setKeunggulanList(prev => prev.filter(x => x.id !== k.id))} className="absolute top-2 right-2 text-slate-400 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+              </motion.div>
+            ))}
         </AnimatePresence>
-        <Button variant="outline" onClick={() => setKeunggulanList(prev => [...prev, { id: crypto.randomUUID(), judul: "", deskripsi: "", icon: "Award" }])} className="gap-2"><Plus className="h-4 w-4" /> Tambah Keunggulan</Button>
+        <Button variant="outline" onClick={() => setKeunggulanList(prev => [...prev, { id: crypto.randomUUID(), judul: "", deskripsi: "", icon: "Award", is_active: true }])} className="gap-2"><Plus className="h-4 w-4" /> Tambah Keunggulan</Button>
       </SectionCard>
 
       <SectionCard title="SOP — Pengantar" icon={<ListChecks className="h-5 w-5 text-blue-600" />}>

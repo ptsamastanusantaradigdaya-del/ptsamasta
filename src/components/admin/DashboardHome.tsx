@@ -36,6 +36,86 @@ export function DashboardHome() {
     const loadStatsAndActivities = async () => {
       setLoading(true);
       try {
+        // Run database slug & UUID migration for CMS pages
+        try {
+          // 1. Rename "layanan-jasa-sdm" to "layanan-jasa-profesional" if it exists
+          const { data: sdmPage } = await supabase
+            .from("cms_pages")
+            .select("*")
+            .eq("slug", "layanan-jasa-sdm")
+            .maybeSingle();
+
+          if (sdmPage) {
+            console.log("[Migration] Found 'layanan-jasa-sdm'. Renaming to 'layanan-jasa-profesional'...");
+            
+            // Delete existing 'layanan-jasa-profesional' to prevent key conflict
+            await supabase.from("cms_pages").delete().eq("slug", "layanan-jasa-profesional");
+
+            // Insert new row
+            const { error: insErr } = await supabase
+              .from("cms_pages")
+              .insert([{
+                slug: "layanan-jasa-profesional",
+                content: sdmPage.content
+              }]);
+
+            if (!insErr) {
+              console.log("[Migration] Successfully inserted 'layanan-jasa-profesional'. Deleting 'layanan-jasa-sdm'...");
+              await supabase.from("cms_pages").delete().eq("slug", "layanan-jasa-sdm");
+            } else {
+              console.error("[Migration] Error inserting 'layanan-jasa-profesional':", insErr);
+            }
+          }
+
+          // 2. Fetch categories and scopes
+          const { data: categories } = await supabase.from("service_categories").select("id, slug, name");
+          const { data: scopes } = await supabase.from("service_scopes").select("id, name, category_id");
+
+          // 3. Fetch layout pages
+          const { data: cmsRows } = await supabase
+            .from("cms_pages")
+            .select("slug, content")
+            .like("slug", "layanan%");
+
+          for (const row of cmsRows || []) {
+            const slug = row.slug;
+            if (slug === "layanan") continue;
+
+            const catSlug = slug.replace("layanan-", "");
+            const matchedCategory = categories?.find(c => c.slug === catSlug);
+            if (!matchedCategory) continue;
+
+            const content = row.content as any;
+            if (!content || !Array.isArray(content.lingkup)) continue;
+
+            let modified = false;
+            const scopesOfCategory = scopes?.filter(s => s.category_id === matchedCategory.id) || [];
+
+            const updatedLingkup = content.lingkup.map((l: any) => {
+              const dbMatch = scopesOfCategory.find(ds => 
+                ds.id === l.id || ds.name.toLowerCase() === l.nama.toLowerCase()
+              );
+
+              if (dbMatch && l.id !== dbMatch.id) {
+                console.log(`[Migration] Page '${slug}', Scope '${l.nama}': ID '${l.id}' -> UUID '${dbMatch.id}'`);
+                modified = true;
+                return { ...l, id: dbMatch.id };
+              }
+              return l;
+            });
+
+            if (modified) {
+              await supabase
+                .from("cms_pages")
+                .update({ content: { ...content, lingkup: updatedLingkup } })
+                .eq("slug", slug);
+              console.log(`[Migration] Updated slug '${slug}' content with database UUIDs.`);
+            }
+          }
+        } catch (migErr) {
+          console.error("[Migration] Error running auto-migration:", migErr);
+        }
+
         // Query counts
         const { count: catCount } = await supabase.from("service_categories").select("*", { count: "exact", head: true });
         const { count: artCount } = await supabase.from("articles").select("*", { count: "exact", head: true });

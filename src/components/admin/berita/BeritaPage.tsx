@@ -145,9 +145,14 @@ export function BeritaPage() {
 
       <SectionCard title="Hero Section" icon={<ImageIcon className="h-4 w-4 text-blue-600" />}>
         <Field label="Judul Hero">
-          <Input value={hero.judul} onChange={(e) => setHero({ judul: e.target.value })} />
+          <Input value={hero.judul} onChange={(e) => setHero(prev => ({ ...prev, judul: e.target.value }))} />
         </Field>
-        <Field label="Gambar Hero"><UploadBox height="h-40" /></Field>
+        <Field label="Subtitle Hero">
+          <Input value={hero.subtitle || ""} onChange={(e) => setHero(prev => ({ ...prev, subtitle: e.target.value }))} />
+        </Field>
+        <Field label="Gambar Hero">
+          <UploadBox height="h-40" folder="berita/hero" value={hero.gambar || ""} onChange={(url) => setHero(prev => ({ ...prev, gambar: url ?? "" }))} />
+        </Field>
       </SectionCard>
 
       <SectionCard title="Daftar Artikel" icon={<Newspaper className="h-4 w-4 text-blue-600" />}

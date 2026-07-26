@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { CheckCircle, ArrowLeft, Loader2, Landmark, BriefcaseBusiness, Heart, Users, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getIcon } from "@/lib/icons";
+import PartnersSection from "@/components/PartnersSection";
 
 interface Category {
   id: string;
@@ -42,17 +43,58 @@ const defaultClients = [
   { icon: Users, label: "Perusahaan" },
 ];
 
+const getGradientClass = (theme: string | null): string => {
+  if (!theme) return "from-blue-600 to-indigo-500";
+  const themeLower = theme.toLowerCase().trim();
+  if (themeLower === "green" || themeLower.includes("green") || themeLower.includes("emerald")) {
+    return "from-emerald-500 to-emerald-600";
+  }
+  if (themeLower === "blue" || themeLower.includes("blue") || themeLower.includes("indigo")) {
+    return "from-blue-500 to-indigo-600";
+  }
+  if (themeLower === "orange" || themeLower.includes("orange") || themeLower.includes("amber") || themeLower.includes("red")) {
+    return "from-orange-500 to-red-500";
+  }
+  if (themeLower === "purple" || themeLower.includes("purple") || themeLower.includes("pink") || themeLower.includes("fuchsia")) {
+    return "from-fuchsia-500 to-pink-500";
+  }
+  return theme;
+};
+
 const LayananDetail = ({ serviceKey }: { serviceKey: string }) => {
   const [category, setCategory] = useState<Category | null>(null);
   const [scopes, setScopes] = useState<Scope[]>([]);
-  const [partners, setPartners] = useState<Partner[]>([]);
-  const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
+  const [clients, setClients] = useState<any[]>(defaultClients);
+  const [katalog, setKatalog] = useState<any[]>([]);
+  const [portfolios, setPortfolio] = useState<Portfolio[]>([]);
+  const [cmsData, setCmsData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       try {
+        // Load cms config
+        const { data: cmsPage } = await supabase
+          .from("cms_pages")
+          .select("content")
+          .eq("slug", `layanan-${serviceKey}`)
+          .maybeSingle();
+
+        console.log("[Detail Page] Fetch - cms_pages:", cmsPage);
+
+        let loadedCms: any = null;
+        if (cmsPage && cmsPage.content) {
+          loadedCms = cmsPage.content;
+          setCmsData(loadedCms);
+          if (loadedCms.clients && loadedCms.clients.length > 0) {
+            setClients(loadedCms.clients.map((c: any) => ({ label: c.nama, emoji: c.emoji, nama: c.nama })));
+          }
+          if (loadedCms.katalog && loadedCms.katalog.length > 0) {
+            setKatalog(loadedCms.katalog);
+          }
+        }
+
         // 1. Fetch Category
         const { data: catData, error: catError } = await supabase
           .from("service_categories")
@@ -76,20 +118,7 @@ const LayananDetail = ({ serviceKey }: { serviceKey: string }) => {
           setScopes(scopesData ?? []);
         }
 
-        // 3. Fetch Partners (for this group or default 'home')
-        const { data: partnersData } = await supabase
-          .from("partners")
-          .select("name, logo_url, group_name")
-          .eq("is_active", true)
-          .order("sort_order");
-        
-        if (partnersData) {
-          const filtered = partnersData.filter((p) => p.group_name === serviceKey);
-          const finalPartners = filtered.length > 0 ? filtered : partnersData.filter((p) => p.group_name === "home");
-          setPartners(finalPartners);
-        }
-
-        // 4. Fetch Portfolios
+        // 3. Fetch Portfolios
         const { data: portfoliosData } = await supabase
           .from("portofolio")
           .select("id, title, cover_url")
@@ -97,7 +126,7 @@ const LayananDetail = ({ serviceKey }: { serviceKey: string }) => {
           .eq("is_published", true)
           .order("sort_order")
           .limit(8);
-        setPortfolios(portfoliosData ?? []);
+        setPortfolio(portfoliosData ?? []);
 
       } catch (err) {
         console.error("Error fetching service detail data:", err);
@@ -128,14 +157,26 @@ const LayananDetail = ({ serviceKey }: { serviceKey: string }) => {
     );
   }
 
-  const gradient = category.color_theme ?? "from-blue-600 to-indigo-500";
-  const doubledPartners = [...partners, ...partners, ...partners]; // Ensure enough items for marquee
+  const gradient = getGradientClass(category.color_theme);
+  const isHexColor = (color: string) => /^#[0-9A-F]{6}$/i.test(color);
+  const heroColor = cmsData?.hero?.warna && isHexColor(cmsData.hero.warna) ? cmsData.hero.warna : null;
+
+  // USER REQUESTED LOGS
+  console.log("[Hero CMS Fetch]", cmsData);
+  console.log("[Hero Color From CMS]", cmsData?.hero?.warna);
+  console.log("[Hero Color Final]", heroColor);
+  console.log("[Hero Fetch]", { cmsData, category, serviceKey });
+  console.log("[Hero Final Style]", heroColor ? { backgroundColor: heroColor } : `Gradient: ${gradient}`);
+  console.log("[Hero Render]", { heroColor, gradient, useGradient: !heroColor });
 
   return (
     <div className="min-h-screen bg-background">
       {/* Hero Banner */}
       <section className="relative pt-16 overflow-hidden">
-        <div className={`relative bg-gradient-to-r ${gradient} min-h-[360px] flex items-end`}>
+        <div 
+          className={`relative min-h-[360px] flex items-end ${!heroColor ? `bg-gradient-to-r ${gradient}` : ""}`}
+          style={heroColor ? { backgroundColor: heroColor } : undefined}
+        >
           <div className="absolute top-20 left-0 right-0 z-10">
             <div className="container mx-auto px-4">
               <div className="flex items-center gap-2 text-sm text-white/70">
@@ -151,16 +192,16 @@ const LayananDetail = ({ serviceKey }: { serviceKey: string }) => {
           <div className="container mx-auto px-4 pb-12 pt-32 flex flex-col md:flex-row items-end gap-8">
             <div className="flex-1 z-10">
               <h1 className="text-2xl md:text-4xl font-extrabold text-white mb-4 leading-tight whitespace-pre-line">
-                {category.name}
+                {cmsData?.hero?.judul || category.name}
               </h1>
               <p className="text-white/80 text-sm max-w-md">
-                {category.short_description}
+                {cmsData?.hero?.subtitle || category.short_description}
               </p>
             </div>
-            {category.hero_image_url && (
+            {(cmsData?.hero?.gambar || category.hero_image_url) && (
               <div className="flex-shrink-0 w-64 h-64 md:w-80 md:h-80 rounded-2xl overflow-hidden shadow-xl">
                 <img
-                  src={category.hero_image_url}
+                  src={cmsData?.hero?.gambar || category.hero_image_url}
                   alt={category.name}
                   className="w-full h-full object-cover"
                 />
@@ -170,20 +211,12 @@ const LayananDetail = ({ serviceKey }: { serviceKey: string }) => {
         </div>
       </section>
 
-      {/* Partners Marquee */}
-      {partners.length > 0 && (
-        <section className="py-8 bg-background border-b border-border">
-          <div className="overflow-hidden">
-            <div className="flex items-center animate-marquee w-max gap-16 px-8">
-              {doubledPartners.map((p, i) => (
-                <div key={i} className="flex-shrink-0 flex items-center justify-center h-12 w-28">
-                  <img src={p.logo_url} alt={p.name} className="max-h-10 max-w-full object-contain" />
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
+      {/* Partners Marquee (Shared Component) */}
+      <PartnersSection
+        groupName="home"
+        showTitle={false}
+        className="py-8 bg-background border-b border-border"
+      />
 
       {/* Tentang Layanan */}
       {category.long_description && (
@@ -205,11 +238,11 @@ const LayananDetail = ({ serviceKey }: { serviceKey: string }) => {
             <div className={`grid grid-cols-1 ${scopes.length > 1 ? "md:grid-cols-2" : ""} gap-8`}>
               {scopes.map((s) => {
                 // If scope lists icons or defaults
-                const scopeIcon = getIcon(null, Sparkles);
+                const ScopeIcon = getIcon(null, Sparkles);
                 return (
                   <div key={s.id} className="bg-card rounded-xl border border-border p-8 text-center shadow-sm flex flex-col items-center">
                     <div className="w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center mb-4 text-[#1E3A8A]">
-                      <scopeIcon size={28} />
+                      <ScopeIcon size={28} />
                     </div>
                     <h3 className="text-lg font-bold text-foreground mb-3">{s.name}</h3>
                     <p className="text-muted-foreground text-sm leading-relaxed mb-6 flex-grow">
@@ -235,12 +268,12 @@ const LayananDetail = ({ serviceKey }: { serviceKey: string }) => {
           <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-3">Mitra Kami</h2>
           <p className="text-muted-foreground text-sm mb-10">Kami dipercaya oleh berbagai sektor institusi</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            {defaultClients.map((c) => (
-              <div key={c.label} className="flex flex-col items-center gap-3 p-6 rounded-xl border border-border bg-card">
-                <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
-                  <c.icon className="w-8 h-8 text-foreground/70" />
+            {clients.map((c) => (
+              <div key={c.id || c.label} className="flex flex-col items-center gap-3 p-6 rounded-xl border border-border bg-card">
+                <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center text-2xl">
+                  {c.emoji ? c.emoji : (c.icon ? <c.icon className="w-8 h-8 text-foreground/70" /> : "🏢")}
                 </div>
-                <span className="text-sm font-medium text-foreground">{c.label}</span>
+                <span className="text-sm font-medium text-foreground">{c.nama || c.label}</span>
               </div>
             ))}
           </div>
@@ -248,23 +281,31 @@ const LayananDetail = ({ serviceKey }: { serviceKey: string }) => {
       </section>
 
       {/* Portofolio / Katalog */}
-      {portfolios.length > 0 && (
+      {((katalog && katalog.some(k => k.url)) || portfolios.length > 0) && (
         <section className="py-16 bg-muted/30">
           <div className="container mx-auto px-4 max-w-5xl text-center">
             <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-10">Katalog & Portofolio</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {portfolios.map((p, i) => (
-                <div key={p.id} className="rounded-xl overflow-hidden shadow-sm aspect-[3/4] bg-muted relative group">
-                  {p.cover_url ? (
-                    <img src={p.cover_url} alt={p.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-muted-foreground text-xs p-4">{p.title}</div>
-                  )}
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-4 text-left">
-                    <p className="text-white text-xs font-semibold leading-snug">{p.title}</p>
+              {katalog && katalog.some(k => k.url) ? (
+                katalog.filter(k => k.url).map((k, i) => (
+                  <div key={k.id || i} className="rounded-xl overflow-hidden shadow-sm aspect-[3/4] bg-muted relative group">
+                    <img src={k.url} alt="Katalog" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                   </div>
-                </div>
-              ))}
+                ))
+              ) : (
+                portfolios.map((p, i) => (
+                  <div key={p.id} className="rounded-xl overflow-hidden shadow-sm aspect-[3/4] bg-muted relative group">
+                    {p.cover_url ? (
+                      <img src={p.cover_url} alt={p.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-muted-foreground text-xs p-4">{p.title}</div>
+                    )}
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-4 text-left">
+                      <p className="text-white text-xs font-semibold leading-snug">{p.title}</p>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </section>
