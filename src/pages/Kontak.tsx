@@ -37,6 +37,13 @@ const Kontak = () => {
     tiktok: ""
   });
 
+  const [cta, setCta] = useState({
+    judul: "Siap Bermitra dengan Kami?",
+    deskripsi: "Hubungi tim kami sekarang untuk mendapatkan solusi terbaik bagi kebutuhan bisnis Anda",
+    tombolWa: "Chat via WhatsApp",
+    tombolPenawaran: "Ajukan Penawaran"
+  });
+
   const [loading, setLoading] = useState<boolean>(true);
   const [sosmed, setSosmed] = useState<{ id: string; label: string; username: string; link: string }[]>([]);
 
@@ -69,6 +76,14 @@ const Kontak = () => {
           }
           if (Array.isArray(content.sosmed)) {
             loadedSosmed = content.sosmed;
+          }
+          if (content.cta) {
+            setCta({
+              judul: content.cta.judul || "Siap Bermitra dengan Kami?",
+              deskripsi: content.cta.deskripsi || "Hubungi tim kami sekarang untuk mendapatkan solusi terbaik bagi kebutuhan bisnis Anda",
+              tombolWa: content.cta.tombolWa || "Chat via WhatsApp",
+              tombolPenawaran: content.cta.tombolPenawaran || "Ajukan Penawaran"
+            });
           }
         }
         setHero(loadedHero);
@@ -339,9 +354,9 @@ const Kontak = () => {
         {/* Bottom CTA Block */}
         <div className="rounded-2xl bg-[#1E3A8A] text-white p-8 md:p-10 text-center space-y-6">
           <div className="space-y-2">
-            <h3 className="text-2xl md:text-3xl font-bold leading-tight">Siap Bermitra dengan Kami?</h3>
+            <h3 className="text-2xl md:text-3xl font-bold leading-tight">{cta.judul}</h3>
             <p className="text-white/80 text-sm max-w-xl mx-auto">
-              Hubungi tim kami sekarang untuk mendapatkan solusi terbaik bagi kebutuhan bisnis Anda
+              {cta.deskripsi}
             </p>
           </div>
 
@@ -352,13 +367,13 @@ const Kontak = () => {
               rel="noopener noreferrer"
               className="w-full sm:w-auto px-8 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-sm flex items-center justify-center gap-2 transition-colors shadow-md"
             >
-              <MessageSquare size={18} /> Chat via WhatsApp
+              <MessageSquare size={18} /> {cta.tombolWa}
             </a>
             <Link
               to="/layanan"
               className="w-full sm:w-auto px-8 py-3 bg-white hover:bg-white/95 text-[#1E3A8A] font-bold rounded-xl text-sm flex items-center justify-center gap-2 transition-colors shadow-md"
             >
-              <FileText size={18} /> Ajukan Penawaran
+              <FileText size={18} /> {cta.tombolPenawaran}
             </Link>
           </div>
         </div>
