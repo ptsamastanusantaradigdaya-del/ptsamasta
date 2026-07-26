@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Mail, Phone, MapPin, Share2, MessageSquare, Image as ImageIcon } from "lucide-react";
+import { Mail, Phone, MapPin, Share2, MessageSquare, Image as ImageIcon, Plus, Trash2 } from "lucide-react";
 import { SectionCard, Field } from "@/components/admin/tentang-kami/SectionCard";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
 import { CmsPageShell } from "@/components/admin/cms/CmsPageShell";
 import { useCmsPage } from "@/hooks/useCmsPage";
 import { registerDefaults } from "@/lib/cms/defaults";
@@ -124,10 +125,10 @@ export function KontakPage() {
 
       // 2. Save structured kontak_info
       if (c) {
-        const facebook = c.sosmed.find((s) => s.id === "facebook")?.link || "";
-        const instagram = c.sosmed.find((s) => s.id === "instagram")?.link || "";
-        const youtube = c.sosmed.find((s) => s.id === "youtube")?.link || "";
-        const tiktok = c.sosmed.find((s) => s.id === "tiktok")?.link || "";
+        const facebook = c.sosmed.find((s) => s.id === "facebook" || s.label.toLowerCase() === "facebook")?.link || "";
+        const instagram = c.sosmed.find((s) => s.id === "instagram" || s.label.toLowerCase() === "instagram")?.link || "";
+        const youtube = c.sosmed.find((s) => s.id === "youtube" || s.label.toLowerCase() === "youtube")?.link || "";
+        const tiktok = c.sosmed.find((s) => s.id === "tiktok" || s.label.toLowerCase() === "tiktok")?.link || "";
 
         const payload = {
           email: c.info.email,
@@ -141,6 +142,8 @@ export function KontakPage() {
           youtube,
           tiktok,
         };
+
+        console.log("[Contact Save Payload]", payload);
 
         if (infoId) {
           const { error } = await supabase
@@ -157,6 +160,14 @@ export function KontakPage() {
           if (error) throw error;
           if (data) setInfoId(data.id);
         }
+
+        // Fetch and print fresh database content
+        const { data: freshInfo } = await supabase
+          .from("kontak_info")
+          .select("*")
+          .limit(1)
+          .maybeSingle();
+        console.log("[Contact Database]", freshInfo);
       }
     } catch (e: any) {
       toast.error("Gagal menyimpan data kontak: " + e.message);
@@ -222,21 +233,42 @@ export function KontakPage() {
           </SectionCard>
 
           <SectionCard title="Media Sosial" icon={<Share2 className="h-4 w-4 text-blue-600" />}>
-            {c.sosmed.map((s, i) => (
-              <div key={s.id} className="rounded-md border border-slate-200 p-3 grid md:grid-cols-[120px_1fr_1fr] gap-3 items-end">
-                <Field label="Platform">
-                  <Input value={s.label} readOnly className="bg-slate-50" />
-                </Field>
-                <Field label="Username">
-                  <Input value={s.username}
-                    onChange={(e) => patch((d) => { d.sosmed[i].username = e.target.value; })} />
-                </Field>
-                <Field label="Link">
-                  <Input value={s.link}
-                    onChange={(e) => patch((d) => { d.sosmed[i].link = e.target.value; })} />
-                </Field>
-              </div>
-            ))}
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-medium text-slate-700">Daftar Media Sosial</p>
+              <Button size="sm" variant="outline" type="button"
+                onClick={() => patch((d) => {
+                  const newId = "sosmed-" + crypto.randomUUID().slice(0, 8);
+                  d.sosmed.push({ id: newId, label: "", username: "", link: "" });
+                })}>
+                <Plus className="h-4 w-4 mr-1" /> Tambah Media Sosial
+              </Button>
+            </div>
+            <div className="space-y-3">
+              {c.sosmed.map((s, i) => (
+                <div key={s.id} className="rounded-md border border-slate-200 p-3 grid md:grid-cols-[150px_1fr_1fr_auto] gap-3 items-end">
+                  <Field label="Platform">
+                    <Input value={s.label} onChange={(e) => patch((d) => { d.sosmed[i].label = e.target.value; })} placeholder="Contoh: LinkedIn" />
+                  </Field>
+                  <Field label="Username">
+                    <Input value={s.username}
+                      onChange={(e) => patch((d) => { d.sosmed[i].username = e.target.value; })} placeholder="Contoh: @username" />
+                  </Field>
+                  <Field label="Link">
+                    <Input value={s.link}
+                      onChange={(e) => patch((d) => { d.sosmed[i].link = e.target.value; })} placeholder="Contoh: https://linkedin.com/in/..." />
+                  </Field>
+                  <Button size="sm" variant="ghost" type="button" className="text-red-500 hover:text-red-700 hover:bg-red-50 mb-1"
+                    onClick={() => patch((d) => {
+                      d.sosmed = d.sosmed.filter((_, idx) => idx !== i);
+                    })}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+              {c.sosmed.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4">Belum ada media sosial yang ditambahkan.</p>
+              )}
+            </div>
           </SectionCard>
 
           <SectionCard title="CTA Section" icon={<MessageSquare className="h-4 w-4 text-blue-600" />}>

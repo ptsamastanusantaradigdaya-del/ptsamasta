@@ -46,7 +46,7 @@ export function PortofolioPage() {
     gambar: "",
   });
 
-  const [kategori, setKategori] = useState<Kategori[]>([
+  const defaultKategori: Kategori[] = [
     {
       id: "pemeliharaan", nama: "Pemeliharaan, Perawatan, dan Pembuatan Lingkungan", warna: "green",
       deskripsi: "Portofolio layanan perawatan lingkungan yang mencakup pemeliharaan taman dan kebersihan bangunan untuk area perumahan, perkantoran, dan fasilitas publik.",
@@ -67,20 +67,22 @@ export function PortofolioPage() {
       deskripsi: "Penyelenggaraan event, desain kreatif, dan publikasi media.",
       projects: [],
     },
-  ]);
+  ];
 
+  const [kategori, setKategori] = useState<Kategori[]>(defaultKategori);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // 1. Fetch hero from cms_pages
+        // 1. Fetch hero and categories from cms_pages
         const { data: pageData } = await supabase
           .from("cms_pages")
           .select("content")
           .eq("slug", "portofolio")
           .maybeSingle();
 
+        let loadedKategori = defaultKategori;
         if (pageData && pageData.content) {
           const content = pageData.content as any;
           if (content.hero) {
@@ -89,6 +91,15 @@ export function PortofolioPage() {
               subtitle: content.hero.subtitle || "",
               gambar: content.hero.gambar || "",
             });
+          }
+          if (Array.isArray(content.kategori)) {
+            loadedKategori = content.kategori.map((k: any) => ({
+              id: k.id,
+              nama: k.nama || "",
+              warna: k.warna || "blue",
+              deskripsi: k.deskripsi || "",
+              projects: [],
+            }));
           }
         }
 
@@ -99,34 +110,35 @@ export function PortofolioPage() {
           .order("sort_order");
 
         if (protoData) {
-          setKategori((prev) =>
-            prev.map((kat) => {
-              const matchedProj = protoData
-                .filter((p) => p.category === kat.id)
-                .map((p) => {
-                  let galleryUrls: string[] = [];
-                  try {
-                    galleryUrls = Array.isArray(p.gallery) ? (p.gallery as string[]) : [];
-                  } catch (e) {}
+          const finalKategori = loadedKategori.map((kat) => {
+            const matchedProj = protoData
+              .filter((p) => p.category === kat.id)
+              .map((p) => {
+                let galleryUrls: string[] = [];
+                try {
+                  galleryUrls = Array.isArray(p.gallery) ? (p.gallery as string[]) : [];
+                } catch (e) {}
 
-                  return {
-                    id: p.id,
-                    judul: p.title,
-                    tahun: p.year || "",
-                    lokasi: p.location || "",
-                    deskripsi: p.description || "",
-                    thumbnail: p.cover_url || "",
-                    tombolText: "Lihat Detail Proyek",
-                    detail: {
-                      konten: p.description || "",
-                      galeri: galleryUrls,
-                      info: p.client || "",
-                    },
-                  };
-                });
-              return { ...kat, projects: matchedProj };
-            })
-          );
+                return {
+                  id: p.id,
+                  judul: p.title,
+                  tahun: p.year || "",
+                  lokasi: p.location || "",
+                  deskripsi: p.description || "",
+                  thumbnail: p.cover_url || "",
+                  tombolText: "Lihat Detail Proyek",
+                  detail: {
+                    konten: p.description || "",
+                    galeri: galleryUrls,
+                    info: p.client || "",
+                  },
+                };
+              });
+            return { ...kat, projects: matchedProj };
+          });
+          setKategori(finalKategori);
+        } else {
+          setKategori(loadedKategori);
         }
       } catch (e: any) {
         console.error("Gagal memuat data portofolio: " + e.message);
@@ -139,14 +151,26 @@ export function PortofolioPage() {
 
   const handleSave = async () => {
     try {
-      // 1. Save hero details to cms_pages
+      const kategoriPayload = kategori.map((k) => ({
+        id: k.id,
+        nama: k.nama,
+        warna: k.warna,
+        deskripsi: k.deskripsi,
+      }));
+
+      console.log("[Portfolio Save Payload]", {
+        hero,
+        kategori: kategoriPayload,
+      });
+
+      // 1. Save hero and categories to cms_pages
       const { data: existingPage } = await supabase
         .from("cms_pages")
         .select("id")
         .eq("slug", "portofolio")
         .maybeSingle();
 
-      const pageContent = { hero };
+      const pageContent = { hero, kategori: kategoriPayload };
       if (existingPage) {
         await supabase
           .from("cms_pages")
@@ -183,7 +207,7 @@ export function PortofolioPage() {
             slug: slug || "project-" + p.id.slice(0, 8),
             year: p.tahun,
             location: p.lokasi,
-            description: p.deskripsi,
+            description: p.detail.konten || p.deskripsi,
             cover_url: p.thumbnail,
             client: p.detail.info,
             gallery: p.detail.galeri as any,
@@ -194,6 +218,15 @@ export function PortofolioPage() {
           await supabase.from("portofolio").upsert(projPayload);
         }
       }
+
+      // 3. Verification query
+      const { data: verifyData } = await supabase
+        .from("cms_pages")
+        .select("slug, content, updated_at")
+        .eq("slug", "portofolio")
+        .maybeSingle();
+
+      console.log("[Portfolio Database]", verifyData);
 
       toast.success("Perubahan data portofolio berhasil disimpan");
     } catch (e: any) {
@@ -290,7 +323,7 @@ export function PortofolioPage() {
                     </div>
                     <div className="grid md:grid-cols-2 gap-3">
                       <Field label="Deskripsi Project">
-                        <Textarea rows={3} value={p.deskripsi} onChange={(e) => patchProj(k.id, p.id, { deskripsi: e.target.value })} />
+                        <Textarea rows={3} value={p.deskripsi} onChange={(e) => patchProj(k.id, p.id, { deskripsi: e.target.value, detail: { ...p.detail, konten: e.target.value } })} />
                       </Field>
                       <Field label="Gambar Thumbnail">
                         <UploadBox height="h-28" value={p.thumbnail} onChange={(url) => patchProj(k.id, p.id, { thumbnail: url ?? "" })} />
@@ -303,7 +336,7 @@ export function PortofolioPage() {
                       <p className="text-xs font-semibold text-slate-500 uppercase">Detail Lengkap Project</p>
                       <Field label="Konten Detail">
                         <Textarea rows={4} value={p.detail.konten}
-                          onChange={(e) => patchProj(k.id, p.id, { detail: { ...p.detail, konten: e.target.value } })} />
+                          onChange={(e) => patchProj(k.id, p.id, { deskripsi: e.target.value, detail: { ...p.detail, konten: e.target.value } })} />
                       </Field>
                       <Field label="Informasi Tambahan">
                         <Textarea rows={2} value={p.detail.info}
